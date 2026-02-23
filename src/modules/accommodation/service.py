@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from models.accommodation import (
     DiscountUsage,
     OrgPlaceAccess,
+    OrgSpecialPlan,
     Place,
     PlaceAvailability,
     PlaceRoom,
@@ -14,8 +15,9 @@ from models.accommodation import (
     Reservation,
     ReservationGuest,
     RoomType,
-    SpecialPlan,
+    UserPlanEligibility,
 )
+from models.identity import User
 from src.config import settings
 from src.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from src.core.pagination import PaginatedResponse, PaginationParams
@@ -23,6 +25,9 @@ from src.core.permissions import CurrentUser
 from src.modules.accommodation.schemas import (
     AvailabilitySetRequest,
     OrgPlaceAccessSet,
+    OrgSpecialPlanCreate,
+    OrgSpecialPlanResponse,
+    OrgSpecialPlanUpdate,
     PlaceCreate,
     PlaceResponse,
     PlaceRoomSet,
@@ -31,8 +36,7 @@ from src.modules.accommodation.schemas import (
     PricingRuleResponse,
     ReservationCreate,
     ReservationResponse,
-    SpecialPlanCreate,
-    SpecialPlanResponse,
+    UserPlanEligibilityResponse,
 )
 
 
@@ -187,33 +191,82 @@ def _get_price(db: Session, place_id: int, room_type_id: int, person_group: str,
     return rule.price_per_night if rule else Decimal(0)
 
 
-# ── Special Plans ────────────────────────────────────────────────────────────
+# ── Org Special Plans ────────────────────────────────────────────────────────
 
-def create_special_plan(db: Session, data: SpecialPlanCreate) -> SpecialPlanResponse:
-    active = db.execute(
-        select(SpecialPlan).where(
-            SpecialPlan.user_id == data.user_id,
-            SpecialPlan.plan_type == data.plan_type,
-            SpecialPlan.is_used == False,  # noqa: E712
-            SpecialPlan.eligible_until >= date.today(),
+def create_org_special_plan(db: Session, data: OrgSpecialPlanCreate) -> OrgSpecialPlanResponse:
+    existing = db.execute(
+        select(OrgSpecialPlan).where(
+            OrgSpecialPlan.org_id == data.org_id,
+            OrgSpecialPlan.plan_type == data.plan_type,
         )
     ).scalar_one_or_none()
-    if active:
-        raise ConflictError(f"User already has an active {data.plan_type} plan")
+    if existing:
+        raise ConflictError(f"Organization already has a {data.plan_type} plan")
 
-    plan = SpecialPlan(
-        user_id=data.user_id, plan_type=data.plan_type,
+    plan = OrgSpecialPlan(
+        org_id=data.org_id, plan_type=data.plan_type,
         eligible_from=data.eligible_from, eligible_until=data.eligible_until,
     )
     db.add(plan)
     db.commit()
     db.refresh(plan)
-    return SpecialPlanResponse.model_validate(plan)
+    return OrgSpecialPlanResponse.model_validate(plan)
 
 
-def list_user_plans(db: Session, user_id: int) -> list[SpecialPlanResponse]:
-    rows = db.execute(select(SpecialPlan).where(SpecialPlan.user_id == user_id)).scalars().all()
-    return [SpecialPlanResponse.model_validate(r) for r in rows]
+def update_org_special_plan(db: Session, plan_id: int, data: OrgSpecialPlanUpdate) -> OrgSpecialPlanResponse:
+    plan = db.get(OrgSpecialPlan, plan_id)
+    if not plan:
+        raise NotFoundError("Org special plan not found")
+    if data.eligible_from is not None:
+        plan.eligible_from = data.eligible_from
+    if data.eligible_until is not None:
+        plan.eligible_until = data.eligible_until
+    if data.is_active is not None:
+        plan.is_active = data.is_active
+    db.commit()
+    db.refresh(plan)
+    return OrgSpecialPlanResponse.model_validate(plan)
+
+
+def list_org_special_plans(db: Session, org_id: int) -> list[OrgSpecialPlanResponse]:
+    rows = db.execute(select(OrgSpecialPlan).where(OrgSpecialPlan.org_id == org_id)).scalars().all()
+    return [OrgSpecialPlanResponse.model_validate(r) for r in rows]
+
+
+def list_user_eligibility(db: Session, user_id: int) -> list[UserPlanEligibilityResponse]:
+    rows = db.execute(
+        select(UserPlanEligibility).where(UserPlanEligibility.user_id == user_id)
+    ).scalars().all()
+    result = []
+    for e in rows:
+        result.append(UserPlanEligibilityResponse(
+            id=e.id, user_id=e.user_id,
+            plan_type=e.org_plan.plan_type, org_id=e.org_plan.org_id,
+            is_used=e.is_used,
+            eligible_from=e.org_plan.eligible_from, eligible_until=e.org_plan.eligible_until,
+            created_at=e.created_at,
+        ))
+    return result
+
+
+def grant_user_plan_eligibility(
+    db: Session, user_id: int, org_id: int, plan_type: str,
+) -> UserPlanEligibility | None:
+    """Auto-grant eligibility if the user's org has an active plan of this type."""
+    org_plan = db.execute(
+        select(OrgSpecialPlan).where(
+            OrgSpecialPlan.org_id == org_id,
+            OrgSpecialPlan.plan_type == plan_type,
+            OrgSpecialPlan.is_active == True,  # noqa: E712
+            OrgSpecialPlan.eligible_until >= date.today(),
+        )
+    ).scalar_one_or_none()
+    if not org_plan:
+        return None
+
+    eligibility = UserPlanEligibility(user_id=user_id, org_special_plan_id=org_plan.id)
+    db.add(eligibility)
+    return eligibility
 
 
 # ── Reservations ─────────────────────────────────────────────────────────────
@@ -237,6 +290,25 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
     ).scalar_one_or_none()
     if not access and not current_user.is_super_admin:
         raise ForbiddenError("Your organization does not have access to this place")
+
+    user = db.get(User, current_user.id)
+    profile = user.profile if user else None
+
+    spouse_count = sum(1 for g in data.guests if g.person_type == "SPOUSE")
+    child_count = sum(1 for g in data.guests if g.person_type == "CHILD")
+
+    if spouse_count > 0:
+        if not profile or profile.marital_status != "MARRIED":
+            raise BadRequestError("Cannot add SPOUSE guest — user marital status is not MARRIED")
+        if spouse_count > 1:
+            raise BadRequestError("Cannot add more than 1 SPOUSE guest")
+
+    if child_count > 0:
+        recorded_children = profile.number_of_children if profile else 0
+        if child_count > recorded_children:
+            raise BadRequestError(
+                f"Cannot add {child_count} CHILD guest(s) — user has {recorded_children} registered child(ren)"
+            )
 
     room_type_key = "TWO_BED" if total_persons >= 5 else "ONE_BED"
     room_type = db.execute(select(RoomType).where(RoomType.key == room_type_key)).scalar_one_or_none()
@@ -274,15 +346,19 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
         if available <= 0:
             raise ConflictError(f"No rooms available on {check_date}")
 
-    special_plan = None
+    eligibility = None
     if data.use_special_plan:
-        special_plan = db.execute(
-            select(SpecialPlan).where(
-                SpecialPlan.user_id == current_user.id,
-                SpecialPlan.is_used == False,  # noqa: E712
-                SpecialPlan.eligible_from <= today,
-                SpecialPlan.eligible_until >= today,
-            ).order_by(SpecialPlan.created_at).limit(1)
+        eligibility = db.execute(
+            select(UserPlanEligibility)
+            .join(OrgSpecialPlan)
+            .where(
+                UserPlanEligibility.user_id == current_user.id,
+                UserPlanEligibility.is_used == False,  # noqa: E712
+                OrgSpecialPlan.org_id == current_user.org_id,
+                OrgSpecialPlan.is_active == True,  # noqa: E712
+                OrgSpecialPlan.eligible_from <= today,
+                OrgSpecialPlan.eligible_until >= today,
+            ).order_by(UserPlanEligibility.created_at).limit(1)
         ).scalar_one_or_none()
 
     family_count = 1 + sum(1 for g in data.guests if g.person_type in ("SPOUSE", "CHILD"))
@@ -294,7 +370,7 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
     total_price = (family_price * family_count * nights) + (guest_price * guest_count * nights)
 
     discount_percent = 0
-    if special_plan:
+    if eligibility:
         discount_percent = 0
     else:
         shamsi_year = _get_shamsi_year()
@@ -323,7 +399,7 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
         total_price=total_price,
         discount_percent=discount_percent,
         final_price=final_price,
-        special_plan_id=special_plan.id if special_plan else None,
+        user_plan_eligibility_id=eligibility.id if eligibility else None,
     )
     db.add(reservation)
     db.flush()
@@ -339,8 +415,8 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
             name=g.name, is_extra=is_extra, extra_charge=charge,
         ))
 
-    if special_plan:
-        special_plan.is_used = True
+    if eligibility:
+        eligibility.is_used = True
 
     db.commit()
     db.refresh(reservation)

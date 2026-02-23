@@ -78,6 +78,8 @@ class UserProfile(Base):
         server_default="SINGLE",
     )
     marriage_date = Column(Date, nullable=True, comment="Required when marital_status=MARRIED")
+    spouse_first_name = Column(String(128), nullable=True, comment="Wife/husband first name")
+    spouse_last_name = Column(String(128), nullable=True, comment="Wife/husband last name")
     grade = Column(String(64), nullable=True, comment="Employment grade/level (L1, L2, ...)")
     number_of_children = Column(SmallInteger, nullable=False, server_default="0")
 

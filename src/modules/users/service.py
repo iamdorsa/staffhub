@@ -7,6 +7,7 @@ from src.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from src.core.pagination import PaginatedResponse, PaginationParams
 from src.core.permissions import CurrentUser
 from src.core.security import hash_password
+from src.modules.accommodation.service import grant_user_plan_eligibility
 from src.modules.users.schemas import (
     ChildCreate,
     ChildResponse,
@@ -163,6 +164,8 @@ def create_user(db: Session, data: UserCreate) -> UserResponse:
         birth_date=data.profile.birth_date,
         marital_status=data.profile.marital_status,
         marriage_date=data.profile.marriage_date,
+        spouse_first_name=data.profile.spouse_first_name,
+        spouse_last_name=data.profile.spouse_last_name,
         grade=data.profile.grade,
     )
     db.add(profile)
@@ -188,6 +191,8 @@ def update_user(db: Session, user_id: int, data: UserUpdate, current_user: Curre
     if data.auth_method is not None:
         user.auth_method = data.auth_method
 
+    was_single = user.profile.marital_status == "SINGLE" if user.profile else True
+
     if data.profile and user.profile:
         p = data.profile
         if p.first_name is not None:
@@ -202,8 +207,15 @@ def update_user(db: Session, user_id: int, data: UserUpdate, current_user: Curre
             user.profile.marital_status = p.marital_status
         if p.marriage_date is not None:
             user.profile.marriage_date = p.marriage_date
+        if p.spouse_first_name is not None:
+            user.profile.spouse_first_name = p.spouse_first_name
+        if p.spouse_last_name is not None:
+            user.profile.spouse_last_name = p.spouse_last_name
         if p.grade is not None:
             user.profile.grade = p.grade
+
+        if was_single and user.profile.marital_status == "MARRIED":
+            grant_user_plan_eligibility(db, user.id, user.org_id, "NEW_MARRIAGE")
 
     db.commit()
     return get_user(db, user.id, current_user)
@@ -233,6 +245,8 @@ def add_child(db: Session, user_id: int, data: ChildCreate, current_user: Curren
 
     if user.profile:
         user.profile.number_of_children += 1
+
+    grant_user_plan_eligibility(db, user_id, user.org_id, "NEW_CHILD")
 
     db.commit()
     db.refresh(child)

@@ -85,24 +85,41 @@ class PricingRuleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Special Plans ────────────────────────────────────────────────────────────
+# ── Org Special Plans ────────────────────────────────────────────────────────
 
-class SpecialPlanCreate(BaseModel):
-    user_id: int
-    plan_type: str
+class OrgSpecialPlanCreate(BaseModel):
+    org_id: int
+    plan_type: str  # NEW_MARRIAGE or NEW_CHILD
     eligible_from: date
     eligible_until: date
 
 
-class SpecialPlanResponse(BaseModel):
+class OrgSpecialPlanUpdate(BaseModel):
+    eligible_from: Optional[date] = None
+    eligible_until: Optional[date] = None
+    is_active: Optional[bool] = None
+
+
+class OrgSpecialPlanResponse(BaseModel):
+    id: int
+    org_id: int
+    plan_type: str
+    eligible_from: date
+    eligible_until: date
+    is_active: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class UserPlanEligibilityResponse(BaseModel):
     id: int
     user_id: int
     plan_type: str
+    org_id: int
+    is_used: bool
     eligible_from: date
     eligible_until: date
-    is_used: bool
     created_at: datetime
-    model_config = {"from_attributes": True}
 
 
 # ── Reservation ──────────────────────────────────────────────────────────────
@@ -158,7 +175,7 @@ class ReservationResponse(BaseModel):
     total_price: Decimal
     discount_percent: int
     final_price: Decimal
-    special_plan_id: Optional[int]
+    user_plan_eligibility_id: Optional[int]
     reviewed_by_user_id: Optional[int]
     reviewed_at: Optional[datetime]
     created_at: datetime

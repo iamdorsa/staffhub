@@ -167,15 +167,18 @@ class PricingRule(Base):
     effective_to = Column(Date, nullable=True, comment="NULL = open-ended")
 
 
-class SpecialPlan(Base):
-    """Time-limited eligibility plans (new marriage / new child)."""
+class OrgSpecialPlan(Base):
+    """Assigns a fixed plan type (NEW_MARRIAGE / NEW_CHILD) to an organization with a time window."""
 
-    __tablename__ = "special_plans"
+    __tablename__ = "org_special_plans"
+    __table_args__ = (
+        UniqueConstraint("org_id", "plan_type", name="uq_org_plan_type"),
+    )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    user_id = Column(
+    org_id = Column(
         BigInteger,
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -185,6 +188,34 @@ class SpecialPlan(Base):
     )
     eligible_from = Column(Date, nullable=False)
     eligible_until = Column(Date, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="1")
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=sa.text("CURRENT_TIMESTAMP"),
+    )
+
+    organization = relationship("Organization", lazy="select")
+
+
+class UserPlanEligibility(Base):
+    """Per-user eligibility record, auto-created when condition is met (marriage/new child)."""
+
+    __tablename__ = "user_plan_eligibility"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    org_special_plan_id = Column(
+        BigInteger,
+        ForeignKey("org_special_plans.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     is_used = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(
         DateTime,
@@ -194,6 +225,7 @@ class SpecialPlan(Base):
     )
 
     user = relationship("User", lazy="select")
+    org_plan = relationship("OrgSpecialPlan", lazy="joined")
 
 
 class DiscountUsage(Base):
@@ -258,9 +290,9 @@ class Reservation(Base):
     total_price = Column(Numeric(15, 0), nullable=False, server_default="0")
     discount_percent = Column(SmallInteger, nullable=False, server_default="0")
     final_price = Column(Numeric(15, 0), nullable=False, server_default="0")
-    special_plan_id = Column(
+    user_plan_eligibility_id = Column(
         BigInteger,
-        ForeignKey("special_plans.id", ondelete="SET NULL"),
+        ForeignKey("user_plan_eligibility.id", ondelete="SET NULL"),
         nullable=True,
     )
     reviewed_by_user_id = Column(
@@ -287,7 +319,7 @@ class Reservation(Base):
     organization = relationship("Organization", lazy="select")
     place = relationship("Place", lazy="select")
     room_type = relationship("RoomType", lazy="joined")
-    special_plan = relationship("SpecialPlan", lazy="select")
+    plan_eligibility = relationship("UserPlanEligibility", lazy="select")
     guests = relationship("ReservationGuest", back_populates="reservation", lazy="select")
 
     def __repr__(self) -> str:

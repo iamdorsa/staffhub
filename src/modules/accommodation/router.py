@@ -10,6 +10,9 @@ from src.modules.accommodation import service
 from src.modules.accommodation.schemas import (
     AvailabilitySetRequest,
     OrgPlaceAccessSet,
+    OrgSpecialPlanCreate,
+    OrgSpecialPlanResponse,
+    OrgSpecialPlanUpdate,
     PlaceCreate,
     PlaceResponse,
     PlaceRoomSet,
@@ -19,8 +22,7 @@ from src.modules.accommodation.schemas import (
     ReservationCreate,
     ReservationResponse,
     ReservationReviewRequest,
-    SpecialPlanCreate,
-    SpecialPlanResponse,
+    UserPlanEligibilityResponse,
 )
 
 router = APIRouter()
@@ -116,24 +118,43 @@ def list_pricing_rules(
     return service.list_pricing_rules(db, place_id)
 
 
-# ── Special Plans ────────────────────────────────────────────────────────────
+# ── Org Special Plans ────────────────────────────────────────────────────────
 
-@router.post("/special-plans", response_model=SpecialPlanResponse, status_code=201)
-def create_special_plan(
-    body: SpecialPlanCreate,
+@router.post("/org-special-plans", response_model=OrgSpecialPlanResponse, status_code=201)
+def create_org_special_plan(
+    body: OrgSpecialPlanCreate,
     current_user: CurrentUser = Depends(require_permission("special_plan.manage")),
     db: Session = Depends(get_db),
 ):
-    return service.create_special_plan(db, body)
+    return service.create_org_special_plan(db, body)
 
 
-@router.get("/users/{user_id}/special-plans", response_model=list[SpecialPlanResponse])
-def list_user_plans(
+@router.patch("/org-special-plans/{plan_id}", response_model=OrgSpecialPlanResponse)
+def update_org_special_plan(
+    plan_id: int,
+    body: OrgSpecialPlanUpdate,
+    current_user: CurrentUser = Depends(require_permission("special_plan.manage")),
+    db: Session = Depends(get_db),
+):
+    return service.update_org_special_plan(db, plan_id, body)
+
+
+@router.get("/orgs/{org_id}/special-plans", response_model=list[OrgSpecialPlanResponse])
+def list_org_special_plans(
+    org_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_org_special_plans(db, org_id)
+
+
+@router.get("/users/{user_id}/plan-eligibility", response_model=list[UserPlanEligibilityResponse])
+def list_user_eligibility(
     user_id: int,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return service.list_user_plans(db, user_id)
+    return service.list_user_eligibility(db, user_id)
 
 
 # ── Reservations ─────────────────────────────────────────────────────────────

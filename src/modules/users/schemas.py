@@ -35,12 +35,17 @@ class ProfileCreate(BaseModel):
     birth_date: Optional[date] = None
     marital_status: str = "SINGLE"
     marriage_date: Optional[date] = None
+    spouse_first_name: Optional[str] = None
+    spouse_last_name: Optional[str] = None
     grade: Optional[str] = None
 
     @model_validator(mode="after")
-    def married_needs_date(self):
-        if self.marital_status == "MARRIED" and self.marriage_date is None:
-            raise ValueError("marriage_date is required when marital_status is MARRIED")
+    def married_requires_details(self):
+        if self.marital_status == "MARRIED":
+            if self.marriage_date is None:
+                raise ValueError("marriage_date is required when marital_status is MARRIED")
+            if not self.spouse_first_name or not self.spouse_last_name:
+                raise ValueError("spouse_first_name and spouse_last_name are required when MARRIED")
         return self
 
 
@@ -51,12 +56,17 @@ class ProfileUpdate(BaseModel):
     birth_date: Optional[date] = None
     marital_status: Optional[str] = None
     marriage_date: Optional[date] = None
+    spouse_first_name: Optional[str] = None
+    spouse_last_name: Optional[str] = None
     grade: Optional[str] = None
 
     @model_validator(mode="after")
-    def married_needs_date(self):
-        if self.marital_status == "MARRIED" and self.marriage_date is None:
-            raise ValueError("marriage_date is required when marital_status is MARRIED")
+    def married_requires_details(self):
+        if self.marital_status == "MARRIED":
+            if self.marriage_date is None:
+                raise ValueError("marriage_date is required when marital_status is MARRIED")
+            if not self.spouse_first_name or not self.spouse_last_name:
+                raise ValueError("spouse_first_name and spouse_last_name are required when MARRIED")
         return self
 
 
@@ -80,6 +90,8 @@ class ProfileResponse(BaseModel):
     birth_date: Optional[date]
     marital_status: str
     marriage_date: Optional[date]
+    spouse_first_name: Optional[str]
+    spouse_last_name: Optional[str]
     grade: Optional[str]
     number_of_children: int
 
