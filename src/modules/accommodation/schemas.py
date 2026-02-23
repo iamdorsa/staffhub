@@ -31,6 +31,7 @@ class RoomTypeResponse(BaseModel):
 class PlaceRoomResponse(BaseModel):
     room_type: RoomTypeResponse
     total_rooms: int
+    is_vip: bool
     model_config = {"from_attributes": True}
 
 
@@ -46,6 +47,7 @@ class PlaceResponse(BaseModel):
 class PlaceRoomSet(BaseModel):
     room_type_id: int
     total_rooms: int
+    is_vip: bool = False
 
 
 # ── Availability ─────────────────────────────────────────────────────────────
@@ -56,11 +58,29 @@ class AvailabilitySetRequest(BaseModel):
     blocked_count: int = 0
 
 
+class AvailabilityResponse(BaseModel):
+    id: int
+    place_id: int
+    room_type_id: Optional[int]
+    date: date
+    blocked_count: int
+    blocked_by_user_id: Optional[int]
+    model_config = {"from_attributes": True}
+
+
 # ── Org Place Access ─────────────────────────────────────────────────────────
 
 class OrgPlaceAccessSet(BaseModel):
     org_id: int
     is_allowed: bool
+
+
+class OrgPlaceAccessResponse(BaseModel):
+    id: int
+    org_id: int
+    place_id: int
+    is_allowed: bool
+    model_config = {"from_attributes": True}
 
 
 # ── Pricing ──────────────────────────────────────────────────────────────────
@@ -135,6 +155,7 @@ class ReservationCreate(BaseModel):
     check_out_date: date
     guests: list[GuestInput]
     use_special_plan: bool = False
+    vip: bool = False
 
     @model_validator(mode="after")
     def validate_dates_and_guests(self):
@@ -171,6 +192,7 @@ class ReservationResponse(BaseModel):
     check_out_date: date
     nights: int
     status: str
+    is_vip: bool
     admin_deadline_at: datetime
     total_price: Decimal
     discount_percent: int

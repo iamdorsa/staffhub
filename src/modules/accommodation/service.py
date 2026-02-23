@@ -23,19 +23,23 @@ from src.core.exceptions import BadRequestError, ConflictError, ForbiddenError, 
 from src.core.pagination import PaginatedResponse, PaginationParams
 from src.core.permissions import CurrentUser
 from src.modules.accommodation.schemas import (
+    AvailabilityResponse,
     AvailabilitySetRequest,
+    OrgPlaceAccessResponse,
     OrgPlaceAccessSet,
     OrgSpecialPlanCreate,
     OrgSpecialPlanResponse,
     OrgSpecialPlanUpdate,
     PlaceCreate,
     PlaceResponse,
+    PlaceRoomResponse,
     PlaceRoomSet,
     PlaceUpdate,
     PricingRuleCreate,
     PricingRuleResponse,
     ReservationCreate,
     ReservationResponse,
+    RoomTypeResponse,
     UserPlanEligibilityResponse,
 )
 
@@ -49,6 +53,15 @@ def _get_shamsi_year() -> int:
 
 
 # ── Places ───────────────────────────────────────────────────────────────────
+
+# ── Room Types ────────────────────────────────────────────────────────────────
+
+def list_room_types(db: Session) -> list[RoomTypeResponse]:
+    rows = db.execute(select(RoomType).order_by(RoomType.id)).scalars().all()
+    return [RoomTypeResponse.model_validate(r) for r in rows]
+
+
+# ── Places ────────────────────────────────────────────────────────────────────
 
 def list_places(db: Session, current_user: CurrentUser, params: PaginationParams, city: str | None = None):
     base = select(Place).where(Place.is_active == True)  # noqa: E712
@@ -64,14 +77,21 @@ def list_places(db: Session, current_user: CurrentUser, params: PaginationParams
 
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
     rows = db.execute(base.order_by(Place.id).offset(params.offset).limit(params.page_size)).scalars().all()
-    return PaginatedResponse.create([PlaceResponse.model_validate(p) for p in rows], total, params)
+    items = [PlaceResponse.model_validate(p) for p in rows]
+    if not current_user.is_super_admin:
+        for item in items:
+            item.rooms = [r for r in item.rooms if not r.is_vip]
+    return PaginatedResponse.create(items, total, params)
 
 
-def get_place(db: Session, place_id: int) -> PlaceResponse:
+def get_place(db: Session, place_id: int, current_user: CurrentUser) -> PlaceResponse:
     place = db.get(Place, place_id)
     if not place:
         raise NotFoundError("Place not found")
-    return PlaceResponse.model_validate(place)
+    resp = PlaceResponse.model_validate(place)
+    if not current_user.is_super_admin:
+        resp.rooms = [r for r in resp.rooms if not r.is_vip]
+    return resp
 
 
 def create_place(db: Session, data: PlaceCreate) -> PlaceResponse:
@@ -104,12 +124,12 @@ def set_rooms(db: Session, place_id: int, rooms: list[PlaceRoomSet]) -> PlaceRes
 
     for r in rooms:
         existing = db.execute(
-            select(PlaceRoom).where(PlaceRoom.place_id == place_id, PlaceRoom.room_type_id == r.room_type_id)
+            select(PlaceRoom).where(PlaceRoom.place_id == place_id, PlaceRoom.room_type_id == r.room_type_id, PlaceRoom.is_vip == r.is_vip)
         ).scalar_one_or_none()
         if existing:
             existing.total_rooms = r.total_rooms
         else:
-            db.add(PlaceRoom(place_id=place_id, room_type_id=r.room_type_id, total_rooms=r.total_rooms))
+            db.add(PlaceRoom(place_id=place_id, room_type_id=r.room_type_id, total_rooms=r.total_rooms, is_vip=r.is_vip))
 
     db.commit()
     db.refresh(place)
@@ -157,6 +177,44 @@ def set_org_access(db: Session, place_id: int, data: OrgPlaceAccessSet) -> dict:
 
     db.commit()
     return {"org_id": data.org_id, "place_id": place_id, "is_allowed": data.is_allowed}
+
+
+def list_rooms(db: Session, place_id: int, current_user: CurrentUser) -> list[PlaceRoomResponse]:
+    place = db.get(Place, place_id)
+    if not place:
+        raise NotFoundError("Place not found")
+    query = select(PlaceRoom).where(PlaceRoom.place_id == place_id)
+    if not current_user.is_super_admin:
+        query = query.where(PlaceRoom.is_vip == False)  # noqa: E712
+    rows = db.execute(query.order_by(PlaceRoom.id)).scalars().all()
+    return [PlaceRoomResponse.model_validate(r) for r in rows]
+
+
+def list_availability(
+    db: Session, place_id: int, from_date: date | None = None, to_date: date | None = None, room_type_id: int | None = None,
+) -> list[AvailabilityResponse]:
+    place = db.get(Place, place_id)
+    if not place:
+        raise NotFoundError("Place not found")
+    query = select(PlaceAvailability).where(PlaceAvailability.place_id == place_id)
+    if from_date:
+        query = query.where(PlaceAvailability.date >= from_date)
+    if to_date:
+        query = query.where(PlaceAvailability.date <= to_date)
+    if room_type_id:
+        query = query.where(PlaceAvailability.room_type_id == room_type_id)
+    rows = db.execute(query.order_by(PlaceAvailability.date)).scalars().all()
+    return [AvailabilityResponse.model_validate(r) for r in rows]
+
+
+def list_org_access(db: Session, place_id: int) -> list[OrgPlaceAccessResponse]:
+    place = db.get(Place, place_id)
+    if not place:
+        raise NotFoundError("Place not found")
+    rows = db.execute(
+        select(OrgPlaceAccess).where(OrgPlaceAccess.place_id == place_id).order_by(OrgPlaceAccess.id)
+    ).scalars().all()
+    return [OrgPlaceAccessResponse.model_validate(r) for r in rows]
 
 
 # ── Pricing ──────────────────────────────────────────────────────────────────
@@ -310,13 +368,20 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
                 f"Cannot add {child_count} CHILD guest(s) — user has {recorded_children} registered child(ren)"
             )
 
+    if data.vip and not current_user.is_super_admin:
+        raise ForbiddenError("Only main admin can book VIP rooms")
+
     room_type_key = "TWO_BED" if total_persons >= 5 else "ONE_BED"
     room_type = db.execute(select(RoomType).where(RoomType.key == room_type_key)).scalar_one_or_none()
     if not room_type:
         raise BadRequestError(f"Room type {room_type_key} not found")
 
     place_room = db.execute(
-        select(PlaceRoom).where(PlaceRoom.place_id == data.place_id, PlaceRoom.room_type_id == room_type.id)
+        select(PlaceRoom).where(
+            PlaceRoom.place_id == data.place_id,
+            PlaceRoom.room_type_id == room_type.id,
+            PlaceRoom.is_vip == data.vip,
+        )
     ).scalar_one_or_none()
     if not place_room or place_room.total_rooms <= 0:
         raise ConflictError("No rooms available at this place")
@@ -395,6 +460,7 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
         check_out_date=data.check_out_date,
         nights=nights,
         status="PENDING",
+        is_vip=data.vip,
         admin_deadline_at=now + timedelta(hours=settings.RESERVATION_ADMIN_DEADLINE_HOURS),
         total_price=total_price,
         discount_percent=discount_percent,

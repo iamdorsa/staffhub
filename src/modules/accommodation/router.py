@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -8,13 +9,16 @@ from src.core.pagination import PaginatedResponse, PaginationParams
 from src.core.permissions import CurrentUser, get_current_user, require_permission
 from src.modules.accommodation import service
 from src.modules.accommodation.schemas import (
+    AvailabilityResponse,
     AvailabilitySetRequest,
+    OrgPlaceAccessResponse,
     OrgPlaceAccessSet,
     OrgSpecialPlanCreate,
     OrgSpecialPlanResponse,
     OrgSpecialPlanUpdate,
     PlaceCreate,
     PlaceResponse,
+    PlaceRoomResponse,
     PlaceRoomSet,
     PlaceUpdate,
     PricingRuleCreate,
@@ -22,10 +26,21 @@ from src.modules.accommodation.schemas import (
     ReservationCreate,
     ReservationResponse,
     ReservationReviewRequest,
+    RoomTypeResponse,
     UserPlanEligibilityResponse,
 )
 
 router = APIRouter()
+
+
+# ── Room Types ────────────────────────────────────────────────────────────────
+
+@router.get("/room-types", response_model=list[RoomTypeResponse])
+def list_room_types(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_room_types(db)
 
 
 # ── Places ───────────────────────────────────────────────────────────────────
@@ -46,7 +61,7 @@ def get_place(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return service.get_place(db, place_id)
+    return service.get_place(db, place_id, current_user)
 
 
 @router.post("/places", response_model=PlaceResponse, status_code=201)
@@ -68,6 +83,15 @@ def update_place(
     return service.update_place(db, place_id, body)
 
 
+@router.get("/places/{place_id}/rooms", response_model=list[PlaceRoomResponse])
+def list_rooms(
+    place_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_rooms(db, place_id, current_user)
+
+
 @router.put("/places/{place_id}/rooms", response_model=PlaceResponse)
 def set_rooms(
     place_id: int,
@@ -78,6 +102,18 @@ def set_rooms(
     return service.set_rooms(db, place_id, body)
 
 
+@router.get("/places/{place_id}/availability", response_model=list[AvailabilityResponse])
+def list_availability(
+    place_id: int,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    room_type_id: Optional[int] = Query(None),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_availability(db, place_id, from_date=from_date, to_date=to_date, room_type_id=room_type_id)
+
+
 @router.put("/places/{place_id}/availability")
 def set_availability(
     place_id: int,
@@ -86,6 +122,15 @@ def set_availability(
     db: Session = Depends(get_db),
 ):
     return service.set_availability(db, place_id, body, admin_id=current_user.id)
+
+
+@router.get("/places/{place_id}/org-access", response_model=list[OrgPlaceAccessResponse])
+def list_org_access(
+    place_id: int,
+    current_user: CurrentUser = Depends(require_permission("org.set_place_access")),
+    db: Session = Depends(get_db),
+):
+    return service.list_org_access(db, place_id)
 
 
 @router.put("/places/{place_id}/org-access")

@@ -58,7 +58,7 @@ class PlaceRoom(Base):
 
     __tablename__ = "place_rooms"
     __table_args__ = (
-        UniqueConstraint("place_id", "room_type_id", name="uq_place_room"),
+        UniqueConstraint("place_id", "room_type_id", "is_vip", name="uq_place_room_vip"),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -73,6 +73,7 @@ class PlaceRoom(Base):
         nullable=False,
     )
     total_rooms = Column(Integer, nullable=False, server_default="0")
+    is_vip = Column(Boolean, nullable=False, default=False, server_default="0")
 
     place = relationship("Place", back_populates="rooms")
     room_type = relationship("RoomType", lazy="joined")
@@ -290,6 +291,7 @@ class Reservation(Base):
     total_price = Column(Numeric(15, 0), nullable=False, server_default="0")
     discount_percent = Column(SmallInteger, nullable=False, server_default="0")
     final_price = Column(Numeric(15, 0), nullable=False, server_default="0")
+    is_vip = Column(Boolean, nullable=False, default=False, server_default="0")
     user_plan_eligibility_id = Column(
         BigInteger,
         ForeignKey("user_plan_eligibility.id", ondelete="SET NULL"),
