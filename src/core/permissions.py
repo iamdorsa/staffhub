@@ -78,6 +78,16 @@ def get_current_user(
     )
 
 
+def get_user_role_keys(db: Session, user_id: int) -> list[str]:
+    return list(
+        db.execute(
+            select(Role.key).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user_id)
+        )
+        .scalars()
+        .all()
+    )
+
+
 def require_permission(permission_key: str):
     """Returns a FastAPI dependency that checks a specific permission."""
 

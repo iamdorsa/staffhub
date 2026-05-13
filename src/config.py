@@ -3,10 +3,11 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
+# db/models lives outside src/ so Alembic can import it independently.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_MODELS_PATH = PROJECT_ROOT / "db"
-if str(DB_MODELS_PATH) not in sys.path:
-    sys.path.insert(0, str(DB_MODELS_PATH))
+_db_path = str(PROJECT_ROOT / "db")
+if _db_path not in sys.path:
+    sys.path.insert(0, _db_path)
 
 
 class Settings(BaseSettings):

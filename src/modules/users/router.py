@@ -81,7 +81,7 @@ def create_user(
     current_user: CurrentUser = Depends(require_permission("user.create")),
     db: Session = Depends(get_db),
 ):
-    return service.create_user(db, body)
+    return service.create_user(db, body, current_user)
 
 
 @router.patch("/users/{user_id}", response_model=UserResponse)

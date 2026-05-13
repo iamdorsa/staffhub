@@ -1,6 +1,6 @@
 """Domain 1b — Roles, Permissions, RBAC mapping, OTP tokens."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -100,7 +100,7 @@ class UserRole(Base):
     assigned_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
 
@@ -121,7 +121,7 @@ class OtpToken(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
 

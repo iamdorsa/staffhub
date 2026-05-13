@@ -5,7 +5,7 @@ from models.access import Role, UserRole
 from models.identity import Organization, User, UserChild, UserProfile
 from src.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from src.core.pagination import PaginatedResponse, PaginationParams
-from src.core.permissions import CurrentUser
+from src.core.permissions import CurrentUser, get_user_role_keys
 from src.core.security import hash_password
 from src.modules.accommodation.service import grant_user_plan_eligibility
 from src.modules.users.schemas import (
@@ -23,20 +23,7 @@ from src.modules.users.schemas import (
 )
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _get_user_role_keys(db: Session, user_id: int) -> list[str]:
-    return list(
-        db.execute(
-            select(Role.key).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user_id)
-        )
-        .scalars()
-        .all()
-    )
-
-
 def _scope_org_filter(query, current_user: CurrentUser):
-    """ORG_ADMIN can only see their own org."""
     if not current_user.is_super_admin:
         query = query.where(Organization.id == current_user.org_id)
     return query
@@ -125,7 +112,7 @@ def get_user(db: Session, user_id: int, current_user: CurrentUser) -> UserRespon
     if not current_user.is_super_admin and user.org_id != current_user.org_id:
         raise NotFoundError("User not found")
 
-    role_keys = _get_user_role_keys(db, user.id)
+    role_keys = get_user_role_keys(db, user.id)
     children = [ChildResponse.model_validate(c) for c in user.children]
     profile = ProfileResponse.model_validate(user.profile) if user.profile else None
 
@@ -137,7 +124,7 @@ def get_user(db: Session, user_id: int, current_user: CurrentUser) -> UserRespon
     )
 
 
-def create_user(db: Session, data: UserCreate) -> UserResponse:
+def create_user(db: Session, data: UserCreate, current_user: CurrentUser) -> UserResponse:
     org = db.get(Organization, data.org_id)
     if not org:
         raise NotFoundError("Organization not found")
@@ -176,7 +163,7 @@ def create_user(db: Session, data: UserCreate) -> UserResponse:
 
     db.commit()
     db.refresh(user)
-    return get_user(db, user.id, CurrentUser(id=0, org_id=0, username="", is_active=True, role_keys=["SUPER_ADMIN"]))
+    return get_user(db, user.id, current_user)
 
 
 def update_user(db: Session, user_id: int, data: UserUpdate, current_user: CurrentUser) -> UserResponse:
@@ -194,25 +181,9 @@ def update_user(db: Session, user_id: int, data: UserUpdate, current_user: Curre
     was_single = user.profile.marital_status == "SINGLE" if user.profile else True
 
     if data.profile and user.profile:
-        p = data.profile
-        if p.first_name is not None:
-            user.profile.first_name = p.first_name
-        if p.last_name is not None:
-            user.profile.last_name = p.last_name
-        if p.national_id is not None:
-            user.profile.national_id = p.national_id
-        if p.birth_date is not None:
-            user.profile.birth_date = p.birth_date
-        if p.marital_status is not None:
-            user.profile.marital_status = p.marital_status
-        if p.marriage_date is not None:
-            user.profile.marriage_date = p.marriage_date
-        if p.spouse_first_name is not None:
-            user.profile.spouse_first_name = p.spouse_first_name
-        if p.spouse_last_name is not None:
-            user.profile.spouse_last_name = p.spouse_last_name
-        if p.grade is not None:
-            user.profile.grade = p.grade
+        updates = data.profile.model_dump(exclude_none=True)
+        for field, value in updates.items():
+            setattr(user.profile, field, value)
 
         if was_single and user.profile.marital_status == "MARRIED":
             grant_user_plan_eligibility(db, user.id, user.org_id, "NEW_MARRIAGE")

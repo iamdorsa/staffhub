@@ -2,9 +2,9 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models.access import Role, UserRole
 from models.identity import User
 from src.core.exceptions import UnauthorizedError
+from src.core.permissions import get_user_role_keys
 from src.core.security import (
     create_access_token,
     create_refresh_token,
@@ -15,16 +15,6 @@ from src.core.security import (
 
 def _build_token_payload(user: User, role_keys: list[str]) -> dict:
     return {"sub": str(user.id), "org_id": user.org_id, "roles": role_keys}
-
-
-def _get_user_role_keys(db: Session, user_id: int) -> list[str]:
-    return list(
-        db.execute(
-            select(Role.key).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user_id)
-        )
-        .scalars()
-        .all()
-    )
 
 
 def login_with_password(db: Session, username: str, password: str) -> dict:
@@ -42,7 +32,7 @@ def login_with_password(db: Session, username: str, password: str) -> dict:
     if not user.is_active:
         raise UnauthorizedError("Account is deactivated")
 
-    role_keys = _get_user_role_keys(db, user.id)
+    role_keys = get_user_role_keys(db, user.id)
     payload = _build_token_payload(user, role_keys)
 
     return {
@@ -68,7 +58,7 @@ def refresh_access_token(db: Session, refresh_token_str: str) -> dict:
     if user is None or not user.is_active:
         raise UnauthorizedError("User not found or inactive")
 
-    role_keys = _get_user_role_keys(db, user.id)
+    role_keys = get_user_role_keys(db, user.id)
     new_payload = _build_token_payload(user, role_keys)
 
     return {

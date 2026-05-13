@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from models.accommodation import (
@@ -47,12 +47,38 @@ from src.modules.accommodation.schemas import (
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _get_shamsi_year() -> int:
-    """Approximate Shamsi year from Gregorian. Good enough for V1."""
     now = datetime.now(timezone.utc)
     return now.year - 621
 
 
-# ── Places ───────────────────────────────────────────────────────────────────
+def _get_usage_count(db: Session, user_id: int, shamsi_year: int) -> int:
+    usage = db.execute(
+        select(DiscountUsage).where(
+            DiscountUsage.user_id == user_id, DiscountUsage.year == shamsi_year
+        )
+    ).scalar_one_or_none()
+    return usage.usage_count if usage else 0
+
+
+def _calc_discount_percent(usage_count: int) -> int:
+    if usage_count == 0:
+        return 50
+    if usage_count == 1:
+        return 30
+    return 0
+
+
+def _increment_usage(db: Session, user_id: int, shamsi_year: int) -> None:
+    usage = db.execute(
+        select(DiscountUsage).where(
+            DiscountUsage.user_id == user_id, DiscountUsage.year == shamsi_year
+        )
+    ).scalar_one_or_none()
+    if usage:
+        usage.usage_count += 1
+    else:
+        db.add(DiscountUsage(user_id=user_id, year=shamsi_year, usage_count=1))
+
 
 # ── Room Types ────────────────────────────────────────────────────────────────
 
@@ -434,19 +460,11 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
 
     total_price = (family_price * family_count * nights) + (guest_price * guest_count * nights)
 
-    discount_percent = 0
     if eligibility:
         discount_percent = 0
     else:
-        shamsi_year = _get_shamsi_year()
-        usage = db.execute(
-            select(DiscountUsage).where(DiscountUsage.user_id == current_user.id, DiscountUsage.year == shamsi_year)
-        ).scalar_one_or_none()
-        count = usage.usage_count if usage else 0
-        if count == 0:
-            discount_percent = 50
-        elif count == 1:
-            discount_percent = 30
+        count = _get_usage_count(db, current_user.id, _get_shamsi_year())
+        discount_percent = _calc_discount_percent(count)
 
     final_price = total_price * (100 - discount_percent) // 100
 
@@ -532,16 +550,7 @@ def review_reservation(db: Session, reservation_id: int, action: str, current_us
     now = datetime.now(timezone.utc)
     if action == "APPROVE":
         res.status = "APPROVED"
-
-        shamsi_year = _get_shamsi_year()
-        usage = db.execute(
-            select(DiscountUsage).where(DiscountUsage.user_id == res.user_id, DiscountUsage.year == shamsi_year)
-        ).scalar_one_or_none()
-        if usage:
-            usage.usage_count += 1
-        else:
-            db.add(DiscountUsage(user_id=res.user_id, year=shamsi_year, usage_count=1))
-
+        _increment_usage(db, res.user_id, _get_shamsi_year())
     elif action == "REJECT":
         res.status = "REJECTED"
     else:
@@ -590,10 +599,7 @@ def expire_pending_reservations(db: Session) -> int:
     for _key, reservations in groups.items():
         scored = []
         for res in reservations:
-            usage = db.execute(
-                select(DiscountUsage).where(DiscountUsage.user_id == res.user_id, DiscountUsage.year == shamsi_year)
-            ).scalar_one_or_none()
-            count = usage.usage_count if usage else 0
+            count = _get_usage_count(db, res.user_id, shamsi_year)
             scored.append((count, res.created_at, res))
 
         scored.sort(key=lambda x: (x[0], x[1]))
@@ -602,14 +608,7 @@ def expire_pending_reservations(db: Session) -> int:
         winner.status = "APPROVED"
         winner.reviewed_at = now
         approved_count += 1
-
-        usage = db.execute(
-            select(DiscountUsage).where(DiscountUsage.user_id == winner.user_id, DiscountUsage.year == shamsi_year)
-        ).scalar_one_or_none()
-        if usage:
-            usage.usage_count += 1
-        else:
-            db.add(DiscountUsage(user_id=winner.user_id, year=shamsi_year, usage_count=1))
+        _increment_usage(db, winner.user_id, shamsi_year)
 
         for _, _, res in scored[1:]:
             res.status = "EXPIRED"

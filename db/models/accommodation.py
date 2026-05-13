@@ -1,6 +1,6 @@
 """Domain 2 — Accommodation: places, rooms, pricing, reservations."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -31,7 +31,7 @@ class Place(Base, SoftDeleteMixin):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
 
@@ -193,7 +193,7 @@ class OrgSpecialPlan(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
 
@@ -221,7 +221,7 @@ class UserPlanEligibility(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
 
@@ -306,14 +306,14 @@ class Reservation(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
     )
 
