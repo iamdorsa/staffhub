@@ -72,6 +72,7 @@ class PlaceRoom(Base):
         ForeignKey("room_types.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    name = Column(String(255), nullable=True, comment="Custom display name for this room group")
     total_rooms = Column(Integer, nullable=False, server_default="0")
     is_vip = Column(Boolean, nullable=False, default=False, server_default="0")
 
@@ -360,3 +361,34 @@ class ReservationGuest(Base):
     )
 
     reservation = relationship("Reservation", back_populates="guests")
+
+
+class PlaceRating(Base):
+    __tablename__ = "place_ratings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "place_id", name="uq_user_place_rating"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    place_id = Column(
+        BigInteger,
+        ForeignKey("places.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    score = Column(SmallInteger, nullable=False, comment="1-5 stars")
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=sa.text("CURRENT_TIMESTAMP"),
+    )
+
+    user = relationship("User", lazy="select")
+    place = relationship("Place", lazy="select")

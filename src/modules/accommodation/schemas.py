@@ -29,7 +29,9 @@ class RoomTypeResponse(BaseModel):
 
 
 class PlaceRoomResponse(BaseModel):
+    id: int
     room_type: RoomTypeResponse
+    name: Optional[str] = None
     total_rooms: int
     is_vip: bool
     model_config = {"from_attributes": True}
@@ -46,6 +48,7 @@ class PlaceResponse(BaseModel):
 
 class PlaceRoomSet(BaseModel):
     room_type_id: int
+    name: Optional[str] = None
     total_rooms: int
     is_vip: bool = False
 
@@ -161,15 +164,15 @@ class ReservationCreate(BaseModel):
     def validate_dates_and_guests(self):
         nights = (self.check_out_date - self.check_in_date).days
         if nights < 1:
-            raise ValueError("check_out_date must be after check_in_date")
+            raise ValueError("تاریخ خروج باید بعد از تاریخ ورود باشد")
         if nights > settings.MAX_STAY_NIGHTS:
-            raise ValueError(f"Maximum stay is {settings.MAX_STAY_NIGHTS} nights")
+            raise ValueError(f"حداکثر مدت اقامت {settings.MAX_STAY_NIGHTS} شب است")
         total_persons = 1 + len(self.guests)  # employee + guests
         if total_persons > settings.MAX_PERSONS_PER_RESERVATION:
-            raise ValueError(f"Maximum {settings.MAX_PERSONS_PER_RESERVATION} persons per reservation")
+            raise ValueError(f"حداکثر {settings.MAX_PERSONS_PER_RESERVATION} نفر در هر رزرو مجاز است")
         extra = sum(1 for g in self.guests if g.person_type == "GUEST")
         if extra > settings.MAX_EXTRA_GUESTS:
-            raise ValueError(f"Maximum {settings.MAX_EXTRA_GUESTS} extra guests allowed")
+            raise ValueError(f"حداکثر {settings.MAX_EXTRA_GUESTS} مهمان اضافه مجاز است")
         return self
 
 
@@ -202,8 +205,44 @@ class ReservationResponse(BaseModel):
     reviewed_at: Optional[datetime]
     created_at: datetime
     guests: list[GuestResponse] = []
+    user_display_name: Optional[str] = None
+    place_name: Optional[str] = None
     model_config = {"from_attributes": True}
 
 
 class ReservationReviewRequest(BaseModel):
     action: str  # APPROVE or REJECT
+
+
+# ── Ratings ─────────────────────────────────────────────────────────────────
+
+class PlaceRatingCreate(BaseModel):
+    place_id: int
+    score: int
+
+    @model_validator(mode="after")
+    def validate_score(self):
+        if self.score < 1 or self.score > 5:
+            raise ValueError("امتیاز باید بین ۱ تا ۵ باشد")
+        return self
+
+
+class PlaceRatingResponse(BaseModel):
+    id: int
+    user_id: int
+    place_id: int
+    score: int
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class PlaceRatingSummary(BaseModel):
+    place_id: int
+    average_score: float
+    total_ratings: int
+
+
+class DiscountInfoResponse(BaseModel):
+    shamsi_year: int
+    usage_count: int
+    next_discount_percent: int

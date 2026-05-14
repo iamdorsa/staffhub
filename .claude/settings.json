@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node node_modules/.bin/tsc --noEmit)",
+      "Bash(export PATH=\"/usr/local/bin:/usr/bin:/bin\")",
+      "Bash(/usr/local/bin/node --version)",
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(/Users/iamdorsa/.nvm/versions/node/v23.11.0/bin/node \"/Users/iamdorsa/Documents/work/my projects/staffhub-ui-v2/node_modules/.bin/tsc\" --noEmit)",
+      "Bash(/Users/iamdorsa/.nvm/versions/node/v23.11.0/bin/node node_modules/.bin/tsc --noEmit)",
+      "Bash(/Users/iamdorsa/.nvm/versions/node/v23.11.0/bin/node node_modules/.bin/vite build --mode development)",
+      "Bash(/Users/iamdorsa/.nvm/versions/node/v23.11.0/bin/npx tsc *)",
+      "Bash(/Users/iamdorsa/.nvm/versions/node/v23.11.0/bin/node node_modules/.bin/vite build)",
+      "Bash(curl -sH \"User-Agent: Mozilla/5.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36\" \"https://fonts.googleapis.com/css2?family=Lalezar&family=Vazirmatn:wght@300;400;500;600;700&display=swap\")",
+      "Bash(curl -sL https://fonts.gstatic.com/s/vazirmatn/v16/Dxxo8j6PP2D_kU2muijlGMWWIGroe7ll.woff2 -o '/Users/iamdorsa/Documents/work/my projects/staffhub-ui-v2/public/fonts/vazirmatn-arabic.woff2')",
+      "Bash(curl -sL https://fonts.gstatic.com/s/vazirmatn/v16/Dxxo8j6PP2D_kU2muijlE8WWIGroe7ll.woff2 -o '/Users/iamdorsa/Documents/work/my projects/staffhub-ui-v2/public/fonts/vazirmatn-latin-ext.woff2')",
+      "Bash(curl -sL https://fonts.gstatic.com/s/vazirmatn/v16/Dxxo8j6PP2D_kU2muijlHcWWIGroew.woff2 -o '/Users/iamdorsa/Documents/work/my projects/staffhub-ui-v2/public/fonts/vazirmatn-latin.woff2')",
+      "Bash(curl -sL https://fonts.gstatic.com/s/lalezar/v16/zrfl0HLVx-HwTP82YaL4IwD3VCnWiQ.woff2 -o '/Users/iamdorsa/Documents/work/my projects/staffhub-ui-v2/public/fonts/lalezar-arabic.woff2')",
+      "Bash(curl -sL https://fonts.gstatic.com/s/lalezar/v16/zrfl0HLVx-HwTP82Yaj4IwD3VCnWiQ.woff2 -o '/Users/iamdorsa/Documents/work/my projects/staffhub-ui-v2/public/fonts/lalezar-vietnamese.woff2')",
+      "Bash(/Users/iamdorsa/.nvm/versions/node/v23.11.0/bin/npx vite *)",
+      "Bash(grep -v \"_encode\\\\|_decode\\\\|command not found\\\\|^$\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('src/modules/accommodation/service.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
+    ]
+  }
+}

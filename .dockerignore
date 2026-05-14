@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.env
+docker-files/
+docs/
+architecture/
+*.pdf
+.idea/
+.vscode/

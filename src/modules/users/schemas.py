@@ -43,9 +43,9 @@ class ProfileCreate(BaseModel):
     def married_requires_details(self):
         if self.marital_status == "MARRIED":
             if self.marriage_date is None:
-                raise ValueError("marriage_date is required when marital_status is MARRIED")
+                raise ValueError("تاریخ ازدواج هنگام وضعیت تأهل «متأهل» الزامی است")
             if not self.spouse_first_name or not self.spouse_last_name:
-                raise ValueError("spouse_first_name and spouse_last_name are required when MARRIED")
+                raise ValueError("نام و نام خانوادگی همسر هنگام وضعیت تأهل «متأهل» الزامی است")
         return self
 
 
@@ -64,9 +64,9 @@ class ProfileUpdate(BaseModel):
     def married_requires_details(self):
         if self.marital_status == "MARRIED":
             if self.marriage_date is None:
-                raise ValueError("marriage_date is required when marital_status is MARRIED")
+                raise ValueError("تاریخ ازدواج هنگام وضعیت تأهل «متأهل» الزامی است")
             if not self.spouse_first_name or not self.spouse_last_name:
-                raise ValueError("spouse_first_name and spouse_last_name are required when MARRIED")
+                raise ValueError("نام و نام خانوادگی همسر هنگام وضعیت تأهل «متأهل» الزامی است")
         return self
 
 
@@ -122,7 +122,7 @@ class RoleAssignRequest(BaseModel):
     @classmethod
     def max_two_roles(cls, v):
         if len(v) > 2:
-            raise ValueError("A user can have at most 2 roles")
+            raise ValueError("هر کاربر حداکثر ۲ نقش می‌تواند داشته باشد")
         return v
 
 

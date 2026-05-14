@@ -50,7 +50,7 @@ def list_orgs(db: Session, current_user: CurrentUser, params: PaginationParams) 
 def create_org(db: Session, data: OrgCreate) -> OrgResponse:
     existing = db.execute(select(Organization).where(Organization.code == data.code)).scalar_one_or_none()
     if existing:
-        raise ConflictError(f"Organization with code '{data.code}' already exists")
+        raise ConflictError("این کد سازمان قبلاً ثبت شده است")
 
     org = Organization(code=data.code, name=data.name)
     db.add(org)
@@ -62,7 +62,7 @@ def create_org(db: Session, data: OrgCreate) -> OrgResponse:
 def update_org(db: Session, org_id: int, data: OrgUpdate) -> OrgResponse:
     org = db.get(Organization, org_id)
     if not org:
-        raise NotFoundError("Organization not found")
+        raise NotFoundError("سازمان یافت نشد")
 
     if data.name is not None:
         org.name = data.name
@@ -108,9 +108,9 @@ def list_users(
 def get_user(db: Session, user_id: int, current_user: CurrentUser) -> UserResponse:
     user = db.get(User, user_id)
     if not user:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
     if not current_user.is_super_admin and user.org_id != current_user.org_id:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
 
     role_keys = get_user_role_keys(db, user.id)
     children = [ChildResponse.model_validate(c) for c in user.children]
@@ -127,11 +127,18 @@ def get_user(db: Session, user_id: int, current_user: CurrentUser) -> UserRespon
 def create_user(db: Session, data: UserCreate, current_user: CurrentUser) -> UserResponse:
     org = db.get(Organization, data.org_id)
     if not org:
-        raise NotFoundError("Organization not found")
+        raise NotFoundError("سازمان یافت نشد")
 
     existing = db.execute(select(User).where(User.username == data.username)).scalar_one_or_none()
     if existing:
-        raise ConflictError(f"Username '{data.username}' is already taken")
+        raise ConflictError("این نام کاربری قبلاً ثبت شده است")
+
+    if data.profile.national_id:
+        dup = db.execute(
+            select(UserProfile).where(UserProfile.national_id == data.profile.national_id)
+        ).scalar_one_or_none()
+        if dup:
+            raise ConflictError("این کد ملی قبلاً ثبت شده است")
 
     user = User(
         org_id=data.org_id,
@@ -169,9 +176,9 @@ def create_user(db: Session, data: UserCreate, current_user: CurrentUser) -> Use
 def update_user(db: Session, user_id: int, data: UserUpdate, current_user: CurrentUser) -> UserResponse:
     user = db.get(User, user_id)
     if not user:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
     if not current_user.is_super_admin and user.org_id != current_user.org_id:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
 
     if data.phone_number is not None:
         user.phone_number = data.phone_number
@@ -182,6 +189,18 @@ def update_user(db: Session, user_id: int, data: UserUpdate, current_user: Curre
 
     if data.profile and user.profile:
         updates = data.profile.model_dump(exclude_none=True)
+
+        new_nid = updates.get("national_id")
+        if new_nid and new_nid != user.profile.national_id:
+            dup = db.execute(
+                select(UserProfile).where(
+                    UserProfile.national_id == new_nid,
+                    UserProfile.user_id != user_id,
+                )
+            ).scalar_one_or_none()
+            if dup:
+                raise ConflictError("این کد ملی قبلاً ثبت شده است")
+
         for field, value in updates.items():
             setattr(user.profile, field, value)
 
@@ -195,9 +214,9 @@ def update_user(db: Session, user_id: int, data: UserUpdate, current_user: Curre
 def deactivate_user(db: Session, user_id: int, current_user: CurrentUser) -> UserResponse:
     user = db.get(User, user_id)
     if not user:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
     if not current_user.is_super_admin and user.org_id != current_user.org_id:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
 
     user.is_active = False
     db.commit()
@@ -207,9 +226,9 @@ def deactivate_user(db: Session, user_id: int, current_user: CurrentUser) -> Use
 def add_child(db: Session, user_id: int, data: ChildCreate, current_user: CurrentUser) -> ChildResponse:
     user = db.get(User, user_id)
     if not user:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
     if not current_user.is_super_admin and user.org_id != current_user.org_id:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
 
     child = UserChild(user_id=user_id, first_name=data.first_name, birth_date=data.birth_date)
     db.add(child)
@@ -227,13 +246,13 @@ def add_child(db: Session, user_id: int, data: ChildCreate, current_user: Curren
 def assign_roles(db: Session, user_id: int, data: RoleAssignRequest, current_user: CurrentUser) -> list[str]:
     user = db.get(User, user_id)
     if not user:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
     if not current_user.is_super_admin and user.org_id != current_user.org_id:
-        raise NotFoundError("User not found")
+        raise NotFoundError("کاربر یافت نشد")
 
     roles = db.execute(select(Role).where(Role.id.in_(data.role_ids))).scalars().all()
     if len(roles) != len(data.role_ids):
-        raise BadRequestError("One or more role IDs are invalid")
+        raise BadRequestError("یک یا چند نقش انتخاب‌شده نامعتبر است")
 
     db.execute(UserRole.__table__.delete().where(UserRole.user_id == user_id))
     for role in roles:

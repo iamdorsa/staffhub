@@ -5,18 +5,23 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.core.database import get_db
+from src.core.exceptions import ForbiddenError
 from src.core.pagination import PaginatedResponse, PaginationParams
 from src.core.permissions import CurrentUser, get_current_user, require_permission
 from src.modules.accommodation import service
 from src.modules.accommodation.schemas import (
     AvailabilityResponse,
     AvailabilitySetRequest,
+    DiscountInfoResponse,
     OrgPlaceAccessResponse,
     OrgPlaceAccessSet,
     OrgSpecialPlanCreate,
     OrgSpecialPlanResponse,
     OrgSpecialPlanUpdate,
     PlaceCreate,
+    PlaceRatingCreate,
+    PlaceRatingResponse,
+    PlaceRatingSummary,
     PlaceResponse,
     PlaceRoomResponse,
     PlaceRoomSet,
@@ -190,6 +195,8 @@ def list_org_special_plans(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if not current_user.is_super_admin and org_id != current_user.org_id:
+        raise ForbiddenError("شما دسترسی به اطلاعات این سازمان را ندارید")
     return service.list_org_special_plans(db, org_id)
 
 
@@ -199,6 +206,8 @@ def list_user_eligibility(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if not current_user.is_super_admin and user_id != current_user.id:
+        raise ForbiddenError("شما دسترسی به اطلاعات این کاربر را ندارید")
     return service.list_user_eligibility(db, user_id)
 
 
@@ -233,6 +242,14 @@ def list_all_reservations(
     return service.list_all_reservations(db, current_user, params, status=status, org_id=org_id)
 
 
+@router.get("/reservations/discount-info", response_model=DiscountInfoResponse)
+def get_discount_info(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_discount_info(db, current_user.id)
+
+
 @router.get("/reservations/{reservation_id}", response_model=ReservationResponse)
 def get_reservation(
     reservation_id: int,
@@ -259,3 +276,41 @@ def cancel_reservation(
     db: Session = Depends(get_db),
 ):
     return service.cancel_reservation(db, reservation_id, current_user)
+
+
+# ── Ratings ─────────────────────────────────────────────────────────────────
+
+@router.post("/place-ratings", response_model=PlaceRatingResponse, status_code=201)
+def rate_place(
+    body: PlaceRatingCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.rate_place(db, current_user, body)
+
+
+@router.get("/places/{place_id}/rating", response_model=PlaceRatingSummary)
+def get_place_rating(
+    place_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_place_rating_summary(db, place_id)
+
+
+@router.get("/place-ratings/summary", response_model=list[PlaceRatingSummary])
+def list_all_ratings(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_all_place_ratings(db)
+
+
+# ── Analytics ───────────────────────────────────────────────────────────────
+
+@router.get("/analytics/places")
+def place_analytics(
+    current_user: CurrentUser = Depends(require_permission("place.manage")),
+    db: Session = Depends(get_db),
+):
+    return service.get_place_analytics(db)

@@ -13,6 +13,7 @@ from models.accommodation import (
     DiscountUsage,
     Reservation,
     ReservationGuest,
+    PlaceRating,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "DiscountUsage",
     "Reservation",
     "ReservationGuest",
+    "PlaceRating",
 ]

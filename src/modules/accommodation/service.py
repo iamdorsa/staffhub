@@ -10,6 +10,7 @@ from models.accommodation import (
     OrgSpecialPlan,
     Place,
     PlaceAvailability,
+    PlaceRating,
     PlaceRoom,
     PricingRule,
     Reservation,
@@ -31,6 +32,9 @@ from src.modules.accommodation.schemas import (
     OrgSpecialPlanResponse,
     OrgSpecialPlanUpdate,
     PlaceCreate,
+    PlaceRatingCreate,
+    PlaceRatingResponse,
+    PlaceRatingSummary,
     PlaceResponse,
     PlaceRoomResponse,
     PlaceRoomSet,
@@ -80,6 +84,18 @@ def _increment_usage(db: Session, user_id: int, shamsi_year: int) -> None:
         db.add(DiscountUsage(user_id=user_id, year=shamsi_year, usage_count=1))
 
 
+# ── Discount Info ─────────────────────────────────────────────────────────────
+
+def get_discount_info(db: Session, user_id: int) -> dict:
+    shamsi_year = _get_shamsi_year()
+    count = _get_usage_count(db, user_id, shamsi_year)
+    return {
+        "shamsi_year": shamsi_year,
+        "usage_count": count,
+        "next_discount_percent": _calc_discount_percent(count),
+    }
+
+
 # ── Room Types ────────────────────────────────────────────────────────────────
 
 def list_room_types(db: Session) -> list[RoomTypeResponse]:
@@ -113,7 +129,7 @@ def list_places(db: Session, current_user: CurrentUser, params: PaginationParams
 def get_place(db: Session, place_id: int, current_user: CurrentUser) -> PlaceResponse:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
     resp = PlaceResponse.model_validate(place)
     if not current_user.is_super_admin:
         resp.rooms = [r for r in resp.rooms if not r.is_vip]
@@ -131,7 +147,7 @@ def create_place(db: Session, data: PlaceCreate) -> PlaceResponse:
 def update_place(db: Session, place_id: int, data: PlaceUpdate) -> PlaceResponse:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
     if data.city is not None:
         place.city = data.city
     if data.name is not None:
@@ -146,7 +162,7 @@ def update_place(db: Session, place_id: int, data: PlaceUpdate) -> PlaceResponse
 def set_rooms(db: Session, place_id: int, rooms: list[PlaceRoomSet]) -> PlaceResponse:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
 
     for r in rooms:
         existing = db.execute(
@@ -154,8 +170,10 @@ def set_rooms(db: Session, place_id: int, rooms: list[PlaceRoomSet]) -> PlaceRes
         ).scalar_one_or_none()
         if existing:
             existing.total_rooms = r.total_rooms
+            if r.name is not None:
+                existing.name = r.name
         else:
-            db.add(PlaceRoom(place_id=place_id, room_type_id=r.room_type_id, total_rooms=r.total_rooms, is_vip=r.is_vip))
+            db.add(PlaceRoom(place_id=place_id, room_type_id=r.room_type_id, name=r.name, total_rooms=r.total_rooms, is_vip=r.is_vip))
 
     db.commit()
     db.refresh(place)
@@ -165,7 +183,7 @@ def set_rooms(db: Session, place_id: int, rooms: list[PlaceRoomSet]) -> PlaceRes
 def set_availability(db: Session, place_id: int, data: AvailabilitySetRequest, admin_id: int) -> dict:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
 
     for d in data.dates:
         existing = db.execute(
@@ -191,7 +209,7 @@ def set_availability(db: Session, place_id: int, data: AvailabilitySetRequest, a
 def set_org_access(db: Session, place_id: int, data: OrgPlaceAccessSet) -> dict:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
 
     existing = db.execute(
         select(OrgPlaceAccess).where(OrgPlaceAccess.org_id == data.org_id, OrgPlaceAccess.place_id == place_id)
@@ -208,7 +226,7 @@ def set_org_access(db: Session, place_id: int, data: OrgPlaceAccessSet) -> dict:
 def list_rooms(db: Session, place_id: int, current_user: CurrentUser) -> list[PlaceRoomResponse]:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
     query = select(PlaceRoom).where(PlaceRoom.place_id == place_id)
     if not current_user.is_super_admin:
         query = query.where(PlaceRoom.is_vip == False)  # noqa: E712
@@ -221,7 +239,7 @@ def list_availability(
 ) -> list[AvailabilityResponse]:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
     query = select(PlaceAvailability).where(PlaceAvailability.place_id == place_id)
     if from_date:
         query = query.where(PlaceAvailability.date >= from_date)
@@ -236,7 +254,7 @@ def list_availability(
 def list_org_access(db: Session, place_id: int) -> list[OrgPlaceAccessResponse]:
     place = db.get(Place, place_id)
     if not place:
-        raise NotFoundError("Place not found")
+        raise NotFoundError("اقامتگاه یافت نشد")
     rows = db.execute(
         select(OrgPlaceAccess).where(OrgPlaceAccess.place_id == place_id).order_by(OrgPlaceAccess.id)
     ).scalars().all()
@@ -285,7 +303,7 @@ def create_org_special_plan(db: Session, data: OrgSpecialPlanCreate) -> OrgSpeci
         )
     ).scalar_one_or_none()
     if existing:
-        raise ConflictError(f"Organization already has a {data.plan_type} plan")
+        raise ConflictError("این نوع طرح ویژه قبلاً برای این سازمان ثبت شده")
 
     plan = OrgSpecialPlan(
         org_id=data.org_id, plan_type=data.plan_type,
@@ -300,7 +318,7 @@ def create_org_special_plan(db: Session, data: OrgSpecialPlanCreate) -> OrgSpeci
 def update_org_special_plan(db: Session, plan_id: int, data: OrgSpecialPlanUpdate) -> OrgSpecialPlanResponse:
     plan = db.get(OrgSpecialPlan, plan_id)
     if not plan:
-        raise NotFoundError("Org special plan not found")
+        raise NotFoundError("طرح ویژه یافت نشد")
     if data.eligible_from is not None:
         plan.eligible_from = data.eligible_from
     if data.eligible_until is not None:
@@ -355,12 +373,28 @@ def grant_user_plan_eligibility(
 
 # ── Reservations ─────────────────────────────────────────────────────────────
 
+def _enrich_reservation(reservation: Reservation) -> ReservationResponse:
+    """Build a ReservationResponse with user_display_name and place_name populated."""
+    resp = ReservationResponse.model_validate(reservation)
+
+    # User display name from profile
+    user = reservation.user
+    if user and user.profile:
+        resp.user_display_name = f"{user.profile.first_name} {user.profile.last_name}"
+
+    # Place name (city + name)
+    place = reservation.place
+    if place:
+        resp.place_name = f"{place.city} - {place.name}"
+
+    return resp
+
 def create_reservation(db: Session, current_user: CurrentUser, data: ReservationCreate) -> ReservationResponse:
     today = date.today()
     if data.check_in_date < today:
-        raise BadRequestError("Cannot book in the past")
+        raise BadRequestError("امکان رزرو در تاریخ گذشته وجود ندارد")
     if (data.check_in_date - today).days > settings.BOOKING_WINDOW_DAYS:
-        raise BadRequestError(f"Booking window is {settings.BOOKING_WINDOW_DAYS} days")
+        raise BadRequestError(f"امکان رزرو فقط تا {settings.BOOKING_WINDOW_DAYS} روز آینده وجود دارد")
 
     nights = (data.check_out_date - data.check_in_date).days
     total_persons = 1 + len(data.guests)
@@ -373,7 +407,7 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
         )
     ).scalar_one_or_none()
     if not access and not current_user.is_super_admin:
-        raise ForbiddenError("Your organization does not have access to this place")
+        raise ForbiddenError("سازمان شما دسترسی به این اقامتگاه را ندارد")
 
     user = db.get(User, current_user.id)
     profile = user.profile if user else None
@@ -383,24 +417,24 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
 
     if spouse_count > 0:
         if not profile or profile.marital_status != "MARRIED":
-            raise BadRequestError("Cannot add SPOUSE guest — user marital status is not MARRIED")
+            raise BadRequestError("امکان افزودن همسر وجود ندارد — وضعیت تأهل کاربر متأهل نیست")
         if spouse_count > 1:
-            raise BadRequestError("Cannot add more than 1 SPOUSE guest")
+            raise BadRequestError("فقط یک همسر می‌توان به رزرو اضافه کرد")
 
     if child_count > 0:
         recorded_children = profile.number_of_children if profile else 0
         if child_count > recorded_children:
             raise BadRequestError(
-                f"Cannot add {child_count} CHILD guest(s) — user has {recorded_children} registered child(ren)"
+                f"امکان افزودن {child_count} فرزند وجود ندارد — کاربر {recorded_children} فرزند ثبت‌شده دارد"
             )
 
     if data.vip and not current_user.is_super_admin:
-        raise ForbiddenError("Only main admin can book VIP rooms")
+        raise ForbiddenError("فقط مدیر کل امکان رزرو اتاق VIP را دارد")
 
     room_type_key = "TWO_BED" if total_persons >= 5 else "ONE_BED"
     room_type = db.execute(select(RoomType).where(RoomType.key == room_type_key)).scalar_one_or_none()
     if not room_type:
-        raise BadRequestError(f"Room type {room_type_key} not found")
+        raise BadRequestError("نوع اتاق مورد نظر یافت نشد")
 
     place_room = db.execute(
         select(PlaceRoom).where(
@@ -410,7 +444,7 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
         )
     ).scalar_one_or_none()
     if not place_room or place_room.total_rooms <= 0:
-        raise ConflictError("No rooms available at this place")
+        raise ConflictError("اتاق موجود در این اقامتگاه وجود ندارد")
 
     for day_offset in range(nights):
         check_date = data.check_in_date + timedelta(days=day_offset)
@@ -435,7 +469,7 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
 
         available = place_room.total_rooms - int(blocked) - int(reserved)
         if available <= 0:
-            raise ConflictError(f"No rooms available on {check_date}")
+            raise ConflictError(f"اتاق خالی در تاریخ {check_date} موجود نیست")
 
     eligibility = None
     if data.use_special_plan:
@@ -504,14 +538,14 @@ def create_reservation(db: Session, current_user: CurrentUser, data: Reservation
 
     db.commit()
     db.refresh(reservation)
-    return ReservationResponse.model_validate(reservation)
+    return _enrich_reservation(reservation)
 
 
 def list_my_reservations(db: Session, current_user: CurrentUser, params: PaginationParams):
     base = select(Reservation).where(Reservation.user_id == current_user.id)
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
     rows = db.execute(base.order_by(Reservation.created_at.desc()).offset(params.offset).limit(params.page_size)).scalars().all()
-    return PaginatedResponse.create([ReservationResponse.model_validate(r) for r in rows], total, params)
+    return PaginatedResponse.create([_enrich_reservation(r) for r in rows], total, params)
 
 
 def list_all_reservations(
@@ -528,54 +562,148 @@ def list_all_reservations(
 
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
     rows = db.execute(base.order_by(Reservation.created_at.desc()).offset(params.offset).limit(params.page_size)).scalars().all()
-    return PaginatedResponse.create([ReservationResponse.model_validate(r) for r in rows], total, params)
+    return PaginatedResponse.create([_enrich_reservation(r) for r in rows], total, params)
 
 
 def get_reservation(db: Session, reservation_id: int, current_user: CurrentUser) -> ReservationResponse:
     res = db.get(Reservation, reservation_id)
     if not res:
-        raise NotFoundError("Reservation not found")
+        raise NotFoundError("رزرو یافت نشد")
     if not current_user.is_super_admin and res.user_id != current_user.id and res.org_id != current_user.org_id:
-        raise NotFoundError("Reservation not found")
-    return ReservationResponse.model_validate(res)
+        raise NotFoundError("رزرو یافت نشد")
+    return _enrich_reservation(res)
 
 
 def review_reservation(db: Session, reservation_id: int, action: str, current_user: CurrentUser) -> ReservationResponse:
     res = db.get(Reservation, reservation_id)
     if not res:
-        raise NotFoundError("Reservation not found")
+        raise NotFoundError("رزرو یافت نشد")
     if res.status != "PENDING":
-        raise BadRequestError("Only PENDING reservations can be reviewed")
+        raise BadRequestError("فقط رزروهای در انتظار بررسی قابل تغییر وضعیت هستند")
+
+    if not current_user.is_super_admin and res.org_id != current_user.org_id:
+        raise ForbiddenError("شما دسترسی به بررسی این رزرو را ندارید")
 
     now = datetime.now(timezone.utc)
     if action == "APPROVE":
         res.status = "APPROVED"
-        _increment_usage(db, res.user_id, _get_shamsi_year())
+        shamsi_year = _get_shamsi_year()
+        if not res.user_plan_eligibility_id:
+            count = _get_usage_count(db, res.user_id, shamsi_year)
+            new_discount = _calc_discount_percent(count)
+            if new_discount != res.discount_percent:
+                res.discount_percent = new_discount
+                res.final_price = res.total_price * (100 - new_discount) // 100
+        _increment_usage(db, res.user_id, shamsi_year)
     elif action == "REJECT":
         res.status = "REJECTED"
     else:
-        raise BadRequestError("Action must be APPROVE or REJECT")
+        raise BadRequestError("عملیات باید تایید یا رد باشد")
 
     res.reviewed_by_user_id = current_user.id
     res.reviewed_at = now
     db.commit()
     db.refresh(res)
-    return ReservationResponse.model_validate(res)
+    return _enrich_reservation(res)
 
 
 def cancel_reservation(db: Session, reservation_id: int, current_user: CurrentUser) -> ReservationResponse:
     res = db.get(Reservation, reservation_id)
     if not res:
-        raise NotFoundError("Reservation not found")
+        raise NotFoundError("رزرو یافت نشد")
     if res.user_id != current_user.id:
-        raise ForbiddenError("You can only cancel your own reservations")
+        raise ForbiddenError("فقط امکان لغو رزروهای خودتان وجود دارد")
     if res.status != "PENDING":
-        raise BadRequestError("Only PENDING reservations can be cancelled")
+        raise BadRequestError("فقط رزروهای در انتظار بررسی قابل لغو هستند")
 
     res.status = "CANCELLED"
     db.commit()
     db.refresh(res)
-    return ReservationResponse.model_validate(res)
+    return _enrich_reservation(res)
+
+
+# ── Ratings ──────────────────────────────────────────────────────────────────
+
+def rate_place(db: Session, current_user: CurrentUser, data: PlaceRatingCreate) -> PlaceRatingResponse:
+    place = db.get(Place, data.place_id)
+    if not place:
+        raise NotFoundError("اقامتگاه یافت نشد")
+
+    existing = db.execute(
+        select(PlaceRating).where(
+            PlaceRating.user_id == current_user.id,
+            PlaceRating.place_id == data.place_id,
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.score = data.score
+        db.commit()
+        db.refresh(existing)
+        return PlaceRatingResponse.model_validate(existing)
+
+    rating = PlaceRating(user_id=current_user.id, place_id=data.place_id, score=data.score)
+    db.add(rating)
+    db.commit()
+    db.refresh(rating)
+    return PlaceRatingResponse.model_validate(rating)
+
+
+def get_place_rating_summary(db: Session, place_id: int) -> PlaceRatingSummary:
+    result = db.execute(
+        select(
+            func.coalesce(func.avg(PlaceRating.score), 0),
+            func.count(PlaceRating.id),
+        ).where(PlaceRating.place_id == place_id)
+    ).one()
+    return PlaceRatingSummary(
+        place_id=place_id,
+        average_score=round(float(result[0]), 1),
+        total_ratings=int(result[1]),
+    )
+
+
+def list_all_place_ratings(db: Session) -> list[PlaceRatingSummary]:
+    rows = db.execute(
+        select(
+            PlaceRating.place_id,
+            func.avg(PlaceRating.score),
+            func.count(PlaceRating.id),
+        ).group_by(PlaceRating.place_id)
+    ).all()
+    return [
+        PlaceRatingSummary(
+            place_id=row[0],
+            average_score=round(float(row[1]), 1),
+            total_ratings=int(row[2]),
+        )
+        for row in rows
+    ]
+
+
+def get_place_analytics(db: Session) -> list[dict]:
+    rows = db.execute(
+        select(
+            Reservation.place_id,
+            func.count(Reservation.id).label("reservation_count"),
+        )
+        .where(Reservation.status.in_(["PENDING", "APPROVED"]))
+        .group_by(Reservation.place_id)
+        .order_by(func.count(Reservation.id).desc())
+    ).all()
+
+    results = []
+    for row in rows:
+        place = db.get(Place, row[0])
+        rating = get_place_rating_summary(db, row[0])
+        results.append({
+            "place_id": row[0],
+            "place_name": f"{place.city} - {place.name}" if place else "نامشخص",
+            "reservation_count": row[1],
+            "average_score": rating.average_score,
+            "total_ratings": rating.total_ratings,
+        })
+    return results
 
 
 def expire_pending_reservations(db: Session) -> int:
@@ -608,6 +736,12 @@ def expire_pending_reservations(db: Session) -> int:
         winner.status = "APPROVED"
         winner.reviewed_at = now
         approved_count += 1
+        if not winner.user_plan_eligibility_id:
+            count = _get_usage_count(db, winner.user_id, shamsi_year)
+            new_discount = _calc_discount_percent(count)
+            if new_discount != winner.discount_percent:
+                winner.discount_percent = new_discount
+                winner.final_price = winner.total_price * (100 - new_discount) // 100
         _increment_usage(db, winner.user_id, shamsi_year)
 
         for _, _, res in scored[1:]:

@@ -36,18 +36,18 @@ def get_current_user(
     try:
         payload = decode_token(credentials.credentials)
     except JWTError:
-        raise UnauthorizedError("Invalid or expired token")
+        raise UnauthorizedError("توکن نامعتبر یا منقضی شده است")
 
     if payload.get("type") != "access":
-        raise UnauthorizedError("Invalid token type")
+        raise UnauthorizedError("نوع توکن نامعتبر است")
 
     user_id = payload.get("sub")
     if user_id is None:
-        raise UnauthorizedError("Invalid token payload")
+        raise UnauthorizedError("اطلاعات توکن نامعتبر است")
 
     user = db.get(User, int(user_id))
     if user is None or not user.is_active:
-        raise UnauthorizedError("User not found or inactive")
+        raise UnauthorizedError("کاربر یافت نشد یا غیرفعال است")
 
     role_rows = (
         db.execute(
@@ -95,7 +95,7 @@ def require_permission(permission_key: str):
         if current_user.is_super_admin:
             return current_user
         if permission_key not in current_user.permissions:
-            raise ForbiddenError(f"Missing required permission: {permission_key}")
+            raise ForbiddenError("شما دسترسی لازم برای این عملیات را ندارید")
         return current_user
 
     return checker
