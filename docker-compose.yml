@@ -48,7 +48,7 @@ services:
     command: migrate
     environment:
       DATABASE_URL: mysql+pymysql://root:${DB_ROOT_PASSWORD:-root}@mariadb:3306/${DB_NAME:-staffhub_db}?charset=utf8mb4
-      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-random-string}
+      SECRET_KEY: ${SECRET_KEY:-1234dgshshshsh}
     depends_on:
       mariadb:
         condition: service_healthy
@@ -63,7 +63,7 @@ services:
     command: seed-admin
     environment:
       DATABASE_URL: mysql+pymysql://root:${DB_ROOT_PASSWORD:-root}@mariadb:3306/${DB_NAME:-staffhub_db}?charset=utf8mb4
-      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-random-string}
+      SECRET_KEY: ${SECRET_KEY:-1234dgshshshsh}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -78,7 +78,7 @@ services:
     command: seed-mock
     environment:
       DATABASE_URL: mysql+pymysql://root:${DB_ROOT_PASSWORD:-root}@mariadb:3306/${DB_NAME:-staffhub_db}?charset=utf8mb4
-      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-random-string}
+      SECRET_KEY: ${SECRET_KEY:-1234dgshshshsh}
     depends_on:
       seed-admin:
         condition: service_completed_successfully
@@ -113,7 +113,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: mysql+pymysql://root:${DB_ROOT_PASSWORD:-root}@mariadb:3306/${DB_NAME:-staffhub_db}?charset=utf8mb4
-      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-random-string}
+      SECRET_KEY: ${SECRET_KEY:-1234dgshshshsh}
       WORKERS: ${API_WORKERS:-4}
       SMS_PROVIDER: ${SMS_PROVIDER:-console}
       SMS_API_KEY: ${SMS_API_KEY:-}
@@ -160,7 +160,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: mysql+pymysql://root:${DB_ROOT_PASSWORD:-root}@mariadb:3306/${DB_NAME:-staffhub_db}?charset=utf8mb4
-      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-random-string}
+      SECRET_KEY: ${SECRET_KEY:-1234dgshshshsh}
     depends_on:
       api:
         condition: service_healthy
