@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from models.access import Role, UserRole
@@ -37,12 +37,29 @@ def _scope_user_filter(query, current_user: CurrentUser):
 
 # ── Organization ─────────────────────────────────────────────────────────────
 
-def list_orgs(db: Session, current_user: CurrentUser, params: PaginationParams) -> PaginatedResponse:
+_ORG_SORT_COLUMNS = {
+    "id": Organization.id,
+    "code": Organization.code,
+    "name": Organization.name,
+    "created_at": Organization.created_at,
+}
+
+
+def list_orgs(
+    db: Session, current_user: CurrentUser, params: PaginationParams,
+    search: str | None = None, sort_by: str | None = None, sort_dir: str | None = None,
+) -> PaginatedResponse:
     base = select(Organization)
     base = _scope_org_filter(base, current_user)
 
+    if search:
+        pattern = f"%{search}%"
+        base = base.where(or_(Organization.code.ilike(pattern), Organization.name.ilike(pattern)))
+
+    col = _ORG_SORT_COLUMNS.get(sort_by, Organization.id)
+    order = col.desc() if sort_dir == "desc" else col.asc()
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
-    rows = db.execute(base.order_by(Organization.id).offset(params.offset).limit(params.page_size)).scalars().all()
+    rows = db.execute(base.order_by(order).offset(params.offset).limit(params.page_size)).scalars().all()
 
     return PaginatedResponse.create([OrgResponse.model_validate(r) for r in rows], total, params)
 
@@ -76,9 +93,17 @@ def update_org(db: Session, org_id: int, data: OrgUpdate) -> OrgResponse:
 
 # ── User ─────────────────────────────────────────────────────────────────────
 
+_USER_SORT_COLUMNS = {
+    "id": User.id,
+    "username": User.username,
+    "is_active": User.is_active,
+}
+
+
 def list_users(
     db: Session, current_user: CurrentUser, params: PaginationParams,
     org_id: int | None = None, search: str | None = None,
+    sort_by: str | None = None, sort_dir: str | None = None,
 ) -> PaginatedResponse:
     base = select(User)
     base = _scope_user_filter(base, current_user)
@@ -87,19 +112,33 @@ def list_users(
         base = base.where(User.org_id == org_id)
     if search:
         pattern = f"%{search}%"
-        base = base.join(User.profile).where(
-            (UserProfile.first_name.ilike(pattern)) | (UserProfile.last_name.ilike(pattern))
+        base = base.outerjoin(User.profile).where(
+            or_(
+                UserProfile.first_name.ilike(pattern),
+                UserProfile.last_name.ilike(pattern),
+                UserProfile.national_id.ilike(pattern),
+                User.username.ilike(pattern),
+            )
         )
 
+    col = _USER_SORT_COLUMNS.get(sort_by, User.id)
+    order = col.desc() if sort_dir == "desc" else col.asc()
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
-    rows = db.execute(base.order_by(User.id).offset(params.offset).limit(params.page_size)).scalars().all()
+    rows = db.execute(base.order_by(order).offset(params.offset).limit(params.page_size)).scalars().all()
+
+    org_cache: dict[int, str] = {}
 
     items = []
     for u in rows:
+        if u.org_id not in org_cache:
+            org = db.get(Organization, u.org_id)
+            org_cache[u.org_id] = org.name if org else None
         items.append(UserListItem(
             id=u.id, org_id=u.org_id, username=u.username, is_active=u.is_active,
             first_name=u.profile.first_name if u.profile else None,
             last_name=u.profile.last_name if u.profile else None,
+            national_id=u.profile.national_id if u.profile else None,
+            org_name=org_cache.get(u.org_id),
         ))
 
     return PaginatedResponse.create(items, total, params)
@@ -115,12 +154,14 @@ def get_user(db: Session, user_id: int, current_user: CurrentUser) -> UserRespon
     role_keys = get_user_role_keys(db, user.id)
     children = [ChildResponse.model_validate(c) for c in user.children]
     profile = ProfileResponse.model_validate(user.profile) if user.profile else None
+    org = db.get(Organization, user.org_id)
 
     return UserResponse(
         id=user.id, org_id=user.org_id, username=user.username,
         phone_number=user.phone_number, auth_method=user.auth_method,
         is_active=user.is_active, created_at=user.created_at,
         profile=profile, children=children, roles=role_keys,
+        org_name=org.name if org else None,
     )
 
 

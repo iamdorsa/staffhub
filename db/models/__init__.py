@@ -9,11 +9,13 @@ from models.accommodation import (
     PlaceAvailability,
     PricingRule,
     OrgSpecialPlan,
+    OrgSpecialPlanPlace,
     UserPlanEligibility,
     DiscountUsage,
     Reservation,
     ReservationGuest,
     PlaceRating,
+    Notification,
 )
 
 __all__ = [
@@ -34,9 +36,11 @@ __all__ = [
     "PlaceAvailability",
     "PricingRule",
     "OrgSpecialPlan",
+    "OrgSpecialPlanPlace",
     "UserPlanEligibility",
     "DiscountUsage",
     "Reservation",
     "ReservationGuest",
     "PlaceRating",
+    "Notification",
 ]

@@ -27,11 +27,14 @@ router = APIRouter()
 
 @router.get("/orgs", response_model=PaginatedResponse[OrgResponse])
 def list_organizations(
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_dir: Optional[str] = Query(None),
     params: PaginationParams = Depends(),
     current_user: CurrentUser = Depends(require_permission("user.view")),
     db: Session = Depends(get_db),
 ):
-    return service.list_orgs(db, current_user, params)
+    return service.list_orgs(db, current_user, params, search=search, sort_by=sort_by, sort_dir=sort_dir)
 
 
 @router.post("/orgs", response_model=OrgResponse, status_code=201)
@@ -59,11 +62,13 @@ def update_organization(
 def list_users(
     org_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_dir: Optional[str] = Query(None),
     params: PaginationParams = Depends(),
     current_user: CurrentUser = Depends(require_permission("user.view")),
     db: Session = Depends(get_db),
 ):
-    return service.list_users(db, current_user, params, org_id=org_id, search=search)
+    return service.list_users(db, current_user, params, org_id=org_id, search=search, sort_by=sort_by, sort_dir=sort_dir)
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)

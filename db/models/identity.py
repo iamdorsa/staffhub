@@ -81,6 +81,7 @@ class UserProfile(Base):
     spouse_first_name = Column(String(128), nullable=True, comment="Wife/husband first name")
     spouse_last_name = Column(String(128), nullable=True, comment="Wife/husband last name")
     grade = Column(String(64), nullable=True, comment="Employment grade/level (L1, L2, ...)")
+    address = Column(String(512), nullable=True)
     number_of_children = Column(SmallInteger, nullable=False, server_default="0")
 
     user = relationship("User", back_populates="profile")

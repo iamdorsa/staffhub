@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from src.config import settings
 
@@ -12,11 +12,15 @@ from src.config import settings
 class PlaceCreate(BaseModel):
     city: str
     name: str
+    address: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class PlaceUpdate(BaseModel):
     city: Optional[str] = None
     name: Optional[str] = None
+    address: Optional[str] = None
+    image_url: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -33,6 +37,7 @@ class PlaceRoomResponse(BaseModel):
     room_type: RoomTypeResponse
     name: Optional[str] = None
     total_rooms: int
+    capacity: Optional[int] = None
     is_vip: bool
     model_config = {"from_attributes": True}
 
@@ -41,6 +46,8 @@ class PlaceResponse(BaseModel):
     id: int
     city: str
     name: str
+    address: Optional[str] = None
+    image_url: Optional[str] = None
     is_active: bool
     rooms: list[PlaceRoomResponse] = []
     model_config = {"from_attributes": True}
@@ -50,6 +57,7 @@ class PlaceRoomSet(BaseModel):
     room_type_id: int
     name: Optional[str] = None
     total_rooms: int
+    capacity: Optional[int] = None
     is_vip: bool = False
 
 
@@ -115,12 +123,14 @@ class OrgSpecialPlanCreate(BaseModel):
     plan_type: str  # NEW_MARRIAGE or NEW_CHILD
     eligible_from: date
     eligible_until: date
+    place_ids: list[int] = []
 
 
 class OrgSpecialPlanUpdate(BaseModel):
     eligible_from: Optional[date] = None
     eligible_until: Optional[date] = None
     is_active: Optional[bool] = None
+    place_ids: Optional[list[int]] = None
 
 
 class OrgSpecialPlanResponse(BaseModel):
@@ -130,6 +140,7 @@ class OrgSpecialPlanResponse(BaseModel):
     eligible_from: date
     eligible_until: date
     is_active: bool
+    place_ids: list[int] = []
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -142,6 +153,7 @@ class UserPlanEligibilityResponse(BaseModel):
     is_used: bool
     eligible_from: date
     eligible_until: date
+    place_ids: list[int] = []
     created_at: datetime
 
 
@@ -210,8 +222,48 @@ class ReservationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminReservationCreate(BaseModel):
+    user_id: int
+    place_id: int
+    room_type_id: int
+    check_in_date: date
+    check_out_date: date
+    is_vip: bool = False
+    status: str = "APPROVED"
+    guests: list[GuestInput] = []
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("تاریخ خروج باید بعد از تاریخ ورود باشد")
+        return self
+
+
 class ReservationReviewRequest(BaseModel):
     action: str  # APPROVE or REJECT
+    remove_plan: bool = False
+
+
+# ── Calendar ────────────────────────────────────────────────────────────────
+
+class CalendarReservationInfo(BaseModel):
+    reservation_id: int
+    user_display_name: Optional[str] = None
+    status: str
+    check_in_date: date
+    check_out_date: date
+
+
+class RoomReservationCalendarItem(BaseModel):
+    date: date
+    room_type_id: int
+    room_type_key: str
+    is_vip: bool
+    total_rooms: int
+    reserved_count: int
+    blocked_count: int
+    available_count: int
+    reservations: list[CalendarReservationInfo]
 
 
 # ── Ratings ─────────────────────────────────────────────────────────────────
@@ -242,7 +294,69 @@ class PlaceRatingSummary(BaseModel):
     total_ratings: int
 
 
+# ── Special Plan Requests ───────────────────────────────────────────────────
+
+class SpecialPlanRequestCreate(BaseModel):
+    plan_type: str  # NEW_MARRIAGE or NEW_CHILD
+
+
+class SpecialPlanRequestReview(BaseModel):
+    action: str  # APPROVE or REJECT
+    admin_note: Optional[str] = None
+    place_id: Optional[int] = None
+    room_type_id: Optional[int] = None
+    check_in_date: Optional[date] = None
+    check_out_date: Optional[date] = None
+
+
+class SpecialPlanRequestResponse(BaseModel):
+    id: int
+    user_id: int
+    org_id: int
+    plan_type: str
+    status: str
+    admin_note: Optional[str] = None
+    place_id: Optional[int] = None
+    room_type_id: Optional[int] = None
+    check_in_date: Optional[date] = None
+    check_out_date: Optional[date] = None
+    reservation_id: Optional[int] = None
+    reviewed_by_user_id: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+    user_display_name: Optional[str] = None
+    place_name: Optional[str] = None
+    room_type_label: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+
 class DiscountInfoResponse(BaseModel):
     shamsi_year: int
     usage_count: int
     next_discount_percent: int
+
+
+# ── Banners ────────────────────────────────────────────────────────────────
+
+class BannerCreate(BaseModel):
+    title: str
+    text: str
+    image_url: Optional[str] = None
+
+
+class BannerUpdate(BaseModel):
+    title: Optional[str] = None
+    text: Optional[str] = None
+    image_url: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class BannerResponse(BaseModel):
+    id: int
+    title: str
+    text: str
+    image_url: Optional[str]
+    is_active: bool
+    created_by_user_id: Optional[int]
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

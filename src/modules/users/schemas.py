@@ -38,6 +38,7 @@ class ProfileCreate(BaseModel):
     spouse_first_name: Optional[str] = None
     spouse_last_name: Optional[str] = None
     grade: Optional[str] = None
+    address: Optional[str] = None
 
     @model_validator(mode="after")
     def married_requires_details(self):
@@ -59,6 +60,7 @@ class ProfileUpdate(BaseModel):
     spouse_first_name: Optional[str] = None
     spouse_last_name: Optional[str] = None
     grade: Optional[str] = None
+    address: Optional[str] = None
 
     @model_validator(mode="after")
     def married_requires_details(self):
@@ -93,6 +95,7 @@ class ProfileResponse(BaseModel):
     spouse_first_name: Optional[str]
     spouse_last_name: Optional[str]
     grade: Optional[str]
+    address: Optional[str]
     number_of_children: int
 
     model_config = {"from_attributes": True}
@@ -137,6 +140,7 @@ class UserResponse(BaseModel):
     profile: Optional[ProfileResponse] = None
     children: list[ChildResponse] = []
     roles: list[str] = []
+    org_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -148,5 +152,7 @@ class UserListItem(BaseModel):
     is_active: bool
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    national_id: Optional[str] = None
+    org_name: Optional[str] = None
 
     model_config = {"from_attributes": True}

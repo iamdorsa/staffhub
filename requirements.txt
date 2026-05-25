@@ -13,4 +13,5 @@ python-multipart
 redis
 celery
 httpx
+openpyxl
 pytest

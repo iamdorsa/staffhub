@@ -19,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from models.base import Base, SoftDeleteMixin
+from models.base import Base, SoftDeleteMixin, TimestampMixin
 
 
 class Place(Base, SoftDeleteMixin):
@@ -28,6 +28,8 @@ class Place(Base, SoftDeleteMixin):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     city = Column(String(128), nullable=False)
     name = Column(String(255), nullable=False)
+    address = Column(String(512), nullable=True)
+    image_url = Column(String(512), nullable=True)
     created_at = Column(
         DateTime,
         nullable=False,
@@ -74,6 +76,7 @@ class PlaceRoom(Base):
     )
     name = Column(String(255), nullable=True, comment="Custom display name for this room group")
     total_rooms = Column(Integer, nullable=False, server_default="0")
+    capacity = Column(SmallInteger, nullable=True, comment="Max persons for this specific room config; falls back to room_type.max_capacity")
     is_vip = Column(Boolean, nullable=False, default=False, server_default="0")
 
     place = relationship("Place", back_populates="rooms")
@@ -199,6 +202,33 @@ class OrgSpecialPlan(Base):
     )
 
     organization = relationship("Organization", lazy="select")
+    plan_places = relationship("OrgSpecialPlanPlace", back_populates="org_special_plan", cascade="all, delete-orphan", lazy="select")
+
+
+class OrgSpecialPlanPlace(Base):
+    """Junction table linking OrgSpecialPlan to specific Places."""
+
+    __tablename__ = "org_special_plan_places"
+    __table_args__ = (
+        UniqueConstraint("org_special_plan_id", "place_id", name="uq_plan_place"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    org_special_plan_id = Column(
+        BigInteger,
+        ForeignKey("org_special_plans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    place_id = Column(
+        BigInteger,
+        ForeignKey("places.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    org_special_plan = relationship("OrgSpecialPlan", back_populates="plan_places")
+    place = relationship("Place", lazy="select")
 
 
 class UserPlanEligibility(Base):
@@ -228,6 +258,40 @@ class UserPlanEligibility(Base):
 
     user = relationship("User", lazy="select")
     org_plan = relationship("OrgSpecialPlan", lazy="joined")
+
+
+class SpecialPlanRequest(Base):
+    __tablename__ = "special_plan_requests"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    org_id = Column(BigInteger, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    user_plan_eligibility_id = Column(BigInteger, ForeignKey("user_plan_eligibility.id", ondelete="SET NULL"), nullable=True)
+    plan_type = Column(String(32), nullable=False)
+    status = Column(
+        Enum("PENDING", "APPROVED", "REJECTED", name="plan_request_status_enum"),
+        nullable=False,
+        server_default="PENDING",
+        index=True,
+    )
+    admin_note = Column(String(1024), nullable=True)
+    place_id = Column(BigInteger, ForeignKey("places.id", ondelete="SET NULL"), nullable=True)
+    room_type_id = Column(BigInteger, ForeignKey("room_types.id", ondelete="SET NULL"), nullable=True)
+    check_in_date = Column(Date, nullable=True)
+    check_out_date = Column(Date, nullable=True)
+    reservation_id = Column(BigInteger, ForeignKey("reservations.id", ondelete="SET NULL"), nullable=True)
+    reviewed_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(
+        DateTime, nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=sa.text("CURRENT_TIMESTAMP"),
+    )
+
+    user = relationship("User", foreign_keys=[user_id], lazy="select")
+    place = relationship("Place", lazy="select")
+    room_type = relationship("RoomType", lazy="select")
+    reservation = relationship("Reservation", lazy="select")
 
 
 class DiscountUsage(Base):
@@ -390,5 +454,41 @@ class PlaceRating(Base):
         server_default=sa.text("CURRENT_TIMESTAMP"),
     )
 
-    user = relationship("User", lazy="select")
-    place = relationship("Place", lazy="select")
+
+class Banner(Base, TimestampMixin):
+    __tablename__ = "banners"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    title = Column(String(255), nullable=False)
+    text = Column(String(1024), nullable=False)
+    image_url = Column(String(512), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="1")
+    created_by_user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    type = Column(String(64), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(String(1024), nullable=False)
+    is_read = Column(Boolean, nullable=False, default=False, server_default="0")
+    reference_type = Column(String(32), nullable=True)
+    reference_id = Column(BigInteger, nullable=True)
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=sa.text("CURRENT_TIMESTAMP"),
+    )

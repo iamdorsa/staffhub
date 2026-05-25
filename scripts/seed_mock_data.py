@@ -28,11 +28,11 @@ from models.identity import Organization, User
 from src.core.database import SessionLocal
 
 PLACES = [
-    {"city": "کیش", "name": "مجتمع مروارید"},
-    {"city": "مشهد", "name": "هتل آپارتمان نور"},
-    {"city": "اصفهان", "name": "اقامتگاه زاینده‌رود"},
-    {"city": "شیراز", "name": "مجتمع پارسه"},
-    {"city": "رامسر", "name": "ویلای ساحلی کاسپین"},
+    {"city": "کیش", "name": "مجتمع مروارید", "address": "جزیره کیش، بلوار ساحلی، نبش خیابان مرجان"},
+    {"city": "مشهد", "name": "هتل آپارتمان نور", "address": "مشهد، بلوار وکیل‌آباد، خیابان هنرستان ۱۲"},
+    {"city": "اصفهان", "name": "اقامتگاه زاینده‌رود", "address": "اصفهان، خیابان چهارباغ بالا، کوچه گلستان ۵"},
+    {"city": "شیراز", "name": "مجتمع پارسه", "address": "شیراز، بلوار ارم، نبش خیابان فردوسی"},
+    {"city": "رامسر", "name": "ویلای ساحلی کاسپین", "address": "رامسر، جاده ساحلی، کیلومتر ۳ غرب"},
 ]
 
 ROOM_TYPE_PRICING = {
@@ -61,7 +61,7 @@ def seed() -> None:
 
         created_places = []
         for p_data in PLACES:
-            place = Place(city=p_data["city"], name=p_data["name"])
+            place = Place(city=p_data["city"], name=p_data["name"], address=p_data.get("address"))
             db.add(place)
             db.flush()
             created_places.append(place)
@@ -71,6 +71,7 @@ def seed() -> None:
                     place_id=place.id,
                     room_type_id=rt.id,
                     total_rooms=8 if rt_key == "ONE_BED" else 4,
+                    capacity=4 if rt_key == "ONE_BED" else 6,
                     is_vip=False,
                 ))
             if "ONE_BED" in room_types:
@@ -79,6 +80,7 @@ def seed() -> None:
                     room_type_id=room_types["ONE_BED"].id,
                     name="سوئیت VIP",
                     total_rooms=2,
+                    capacity=4,
                     is_vip=True,
                 ))
 
