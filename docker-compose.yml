@@ -87,6 +87,23 @@ services:
     profiles:
       - seed
 
+  # ── Seed full mock data (run-once, optional) ────────────
+  seed-full:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: seed-full
+    environment:
+      DATABASE_URL: mysql+pymysql://root:${DB_ROOT_PASSWORD:-root}@mariadb:3306/${DB_NAME:-staffhub_db}?charset=utf8mb4
+      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-random-string}
+    depends_on:
+      seed-admin:
+        condition: service_completed_successfully
+    networks:
+      - staffhub
+    profiles:
+      - seed-full
+
   # ── Backend API ──────────────────────────────────────────
   api:
     build:

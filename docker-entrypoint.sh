@@ -33,6 +33,14 @@ case "$1" in
     echo "Mock data seed complete."
     ;;
 
+  seed-full)
+    echo "Seeding comprehensive mock data..."
+    cd /app
+    python -m scripts.seed_mock_data
+    python -m scripts.seed_comprehensive_mock
+    echo "Full mock data seed complete."
+    ;;
+
   expire-reservations)
     echo "Running reservation expiry job..."
     cd /app
