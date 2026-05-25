@@ -116,7 +116,7 @@ services:
   # ── Frontend (Nginx + React SPA) ─────────────────────────
   web:
     build:
-      context: ../staffhub-ui-v2
+      context: ../staffhub-ui
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
